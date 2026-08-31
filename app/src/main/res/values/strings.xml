@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenCell</string>
+    <string name="dialer_tab">Phone</string>
+    <string name="messages_tab">Messages</string>
+    <string name="contacts_tab">Contacts</string>
+    <string name="settings_tab">Settings</string>
+    <string name="call_answer">Answer</string>
+    <string name="call_reject">Reject</string>
+    <string name="call_hangup">End Call</string>
+    <string name="call_hold">Hold</string>
+    <string name="call_resume">Resume</string>
+    <string name="call_mute">Mute</string>
+    <string name="call_unmute">Unmute</string>
+    <string name="call_speaker">Speaker</string>
+    <string name="call_keypad">Keypad</string>
+    <string name="compose_message">Compose message</string>
+    <string name="send_message">Send</string>
+    <string name="type_message">Type a message…</string>
+    <string name="search_contacts">Search contacts</string>
+    <string name="no_calls">No recent calls</string>
+    <string name="no_messages">No messages yet</string>
+    <string name="incoming_call">Incoming call</string>
+    <string name="outgoing_call">Calling…</string>
+    <string name="active_call">Active call</string>
+    <string name="call_ended">Call ended</string>
+    <string name="api_keys">API Keys</string>
+    <string name="create_api_key">Create API Key</string>
+    <string name="revoke_api_key">Revoke</string>
+    <string name="api_server">API Server</string>
+    <string name="api_server_running">Running on port %1$d</string>
+    <string name="api_server_stopped">Stopped</string>
+    <string name="remote_access">Remote Access</string>
+    <string name="role_setup_title">Set Default Phone App</string>
+    <string name="role_setup_message">OpenCell needs to be set as your default phone and SMS app to function properly.</string>
+    <string name="set_as_default">Set as Default</string>
+    <string name="skip">Skip</string>
+    <string name="device_info">Device Info</string>
+    <string name="sim_info">SIM Info</string>
+    <string name="network_info">Network Info</string>
+    <string name="capabilities">Capabilities</string>
+    <string name="event_log">Event Log</string>
+    <string name="audit_log">Audit Log</string>
+</resources>

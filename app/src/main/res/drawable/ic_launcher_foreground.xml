@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Cell tower icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 L54,78 M44,54 L64,54 M48,44 L60,44 M48,64 L60,64 M40,38 L68,38 M40,70 L68,70"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,24 A4,4 0 1,1 54.01,24Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,80 A4,4 0 1,1 54.01,80Z"/>
+</vector>
