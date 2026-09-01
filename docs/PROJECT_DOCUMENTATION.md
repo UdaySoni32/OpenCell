@@ -1,6 +1,6 @@
 # OpenCell — Comprehensive Project Documentation
 
-> **Last Updated:** September 1, 2026  
+> **Last Updated:** September 1, 2026 (Updated: UI/UX redesign + API fixes)  
 > **Version:** 0.1.0-mvp  
 > **Repository:** [github.com/udaysoni32/opencell](https://github.com/udaysoni32/opencell)  
 > **Build Status:** ✅ BUILD SUCCESSFUL  
@@ -412,32 +412,54 @@ Unresolved reference: BugReport
 
 ## 8. Current Phase
 
-### ✅ Phase 5: COMPLETE — All Changes Pushed
+### ✅ Phase 7: COMPLETE — UI/UX Redesign + API Fixes + Docs
 
 | Milestone | Status |
 |-----------|--------|
 | Default dialer/SMS app registration | ✅ Fixed |
 | API messages endpoint | ✅ Fixed |
-| UI/UX redesign (all screens) | ✅ Complete |
+| API call history from DB | ✅ Fixed |
+| API events from DB | ✅ Fixed |
+| WebSocket event streaming | ✅ Fixed + Auth added |
+| API keys listing from DB | ✅ Fixed |
+| Audit logs endpoint | ✅ Added |
+| UI/UX — Google Phone-style 3-tab nav | ✅ Complete |
+| UI/UX — Home tab (favorites + recents) | ✅ Complete |
+| UI/UX — Standalone keypad tab | ✅ Complete |
+| UI/UX — Contact name resolution | ✅ Complete |
 | Compilation errors | ✅ All resolved |
 | Build verification | ✅ BUILD SUCCESSFUL |
 | Git push to remote | ✅ Pushed to `udaysoni32/opencell` |
+| API documentation | ✅ Updated |
 
 ### What's Working Now
 
+**Telephony:**
 - ✅ OpenCell appears in the default phone/SMS app picker
 - ✅ PhoneAccount is registered at app startup
-- ✅ API `GET /messages` returns all messages from the database
-- ✅ API `GET /conversations` returns conversation threads
-- ✅ API `POST /messages` sends SMS via the device
-- ✅ API `POST /calls` places outbound calls
-- ✅ All call lifecycle endpoints work (answer/reject/hangup/hold/resume)
-- ✅ Dark green Material 3 theme (dark + light modes)
-- ✅ Polished dialer with keypad and grouped recents
-- ✅ Contacts with letter-section headers and search
-- ✅ Messages with conversation list, search, and compose screen
-- ✅ Settings with API server toggle, key management, role setup
-- ✅ WebSocket event streaming for real-time updates
+- ✅ Outgoing/incoming calls via ConnectionService + InCallService
+- ✅ SMS send/receive as default SMS app
+
+**API Server (port 8900):**
+- ✅ `GET /calls` — full call history from DB with filtering
+- ✅ `GET /calls/{id}` — any call from DB
+- ✅ `POST /calls` — initiate outbound call
+- ✅ `GET /messages` — all messages from DB
+- ✅ `POST /messages` — send SMS
+- ✅ `GET /conversations` — conversation threads
+- ✅ `GET /events` — recent events from DB
+- ✅ `GET /api-keys` — list keys from DB
+- ✅ `GET /audit-logs` — audit trail
+- ✅ WebSocket streaming with authentication
+- ✅ All call lifecycle endpoints (answer/reject/hangup/hold/resume)
+
+**UI/UX (Material 3 Expressive):**
+- ✅ 3-tab navigation: Home, Keypad, Messages (like Google Phone)
+- ✅ Home tab: Favorites row + Recents list (merged)
+- ✅ Keypad tab: Standalone dialpad with FAB
+- ✅ Messages tab: Conversation list with search + compose
+- ✅ Contact name resolution across all screens
+- ✅ Dark green theme (dark + light modes)
 
 ---
 
@@ -447,44 +469,114 @@ Unresolved reference: BugReport
 
 **Authentication:** Bearer token in `Authorization` header
 
+```
+Authorization: Bearer oc_test_xxxxxxxxxxxxxxxxxxxx
+```
+
 ### Calls
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/calls` | List active calls |
-| `POST` | `/calls` | Initiate outbound call `{to, subscription_id?}` |
-| `GET` | `/calls/{call_id}` | Get call details |
-| `POST` | `/calls/{call_id}/answer` | Answer incoming call |
-| `POST` | `/calls/{call_id}/reject` | Reject incoming call |
-| `POST` | `/calls/{call_id}/hangup` | Hang up call |
-| `POST` | `/calls/{call_id}/hold` | Hold call |
-| `POST` | `/calls/{call_id}/resume` | Resume held call |
+| Method | Endpoint | Description | Query Params |
+|--------|----------|-------------|--------------|
+| `GET` | `/v1/calls` | List all calls (history + active) | `?state=`, `?device_id=`, `?limit=100` |
+| `POST` | `/v1/calls` | Initiate outbound call | — |
+| `GET` | `/v1/calls/{call_id}` | Get call by ID from DB | — |
+| `POST` | `/v1/calls/{call_id}/answer` | Answer incoming call | — |
+| `POST` | `/v1/calls/{call_id}/reject` | Reject incoming call | — |
+| `POST` | `/v1/calls/{call_id}/hangup` | Hang up call | — |
+| `POST` | `/v1/calls/{call_id}/hold` | Hold call | — |
+| `POST` | `/v1/calls/{call_id}/resume` | Resume held call | — |
+
+**Example: List recent missed calls**
+```bash
+curl -H "Authorization: Bearer oc_test_xxx" http://192.168.1.100:8900/v1/calls?state=MISSED&limit=10
+```
+
+**Example: Initiate a call**
+```bash
+curl -X POST http://192.168.1.100:8900/v1/calls \
+  -H "Authorization: Bearer oc_test_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"to": "+1234567890"}'
+```
 
 ### Messages
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/messages` | List all messages (most recent first) |
-| `POST` | `/messages` | Send SMS `{to, body, subscription_id?}` |
-| `GET` | `/messages/{message_id}` | Get message details |
-| `GET` | `/conversations` | List conversation threads |
-| `GET` | `/conversations/{thread_id}/messages` | Get messages in a thread |
+| Method | Endpoint | Description | Query Params |
+|--------|----------|-------------|--------------|
+| `GET` | `/v1/messages` | List all messages (most recent first) | `?limit=100` |
+| `POST` | `/v1/messages` | Send SMS | — |
+| `GET` | `/v1/messages/{message_id}` | Get message details | — |
+| `GET` | `/v1/conversations` | List conversation threads | — |
+| `GET` | `/v1/conversations/{thread_id}/messages` | Get messages in thread | — |
+
+**Example: Send an SMS**
+```bash
+curl -X POST http://192.168.1.100:8900/v1/messages \
+  -H "Authorization: Bearer oc_test_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"to": "+1234567890", "body": "Hello from OpenCell!"}'
+```
 
 ### Devices
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/devices` | List all devices |
-| `GET` | `/devices/current` | Get current device info |
+| `GET` | `/v1/devices` | List all devices |
+| `GET` | `/v1/devices/{device_id}` | Get device details |
+| `GET` | `/v1/devices/{device_id}/network` | Get network info |
+| `GET` | `/v1/devices/{device_id}/sim` | Get SIM info |
+| `GET` | `/v1/devices/{device_id}/capabilities` | Get device capabilities |
 
-### Other
+### Contacts
+
+| Method | Endpoint | Description | Query Params |
+|--------|----------|-------------|--------------|
+| `GET` | `/v1/contacts` | List/search contacts | `?q=search_term` |
+| `GET` | `/v1/contacts/lookup` | Lookup contact by phone number | `?number=+1234567890` |
+
+### Events
+
+| Method | Endpoint | Description | Query Params |
+|--------|----------|-------------|--------------|
+| `GET` | `/v1/events` | List recent events from DB | `?device_id=`, `?limit=100` |
+| `WS` | `/v1/events/stream?api_key=oc_xxx` | Real-time event stream | Auth via query param |
+
+**Example: Connect to WebSocket**
+```javascript
+const ws = new WebSocket('ws://192.168.1.100:8900/v1/events/stream?api_key=oc_test_xxx');
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Event:', data.event, data.data);
+};
+```
+
+### API Keys
+
+| Method | Endpoint | Description | Query Params |
+|--------|----------|-------------|--------------|
+| `GET` | `/v1/api-keys` | List API keys | `?project_id=default` |
+| `POST` | `/v1/api-keys` | Create API key | — |
+| `DELETE` | `/v1/api-keys/{key_id}` | Revoke API key | — |
+
+**Example: Create an API key**
+```bash
+curl -X POST http://192.168.1.100:8900/v1/api-keys \
+  -H "Authorization: Bearer oc_test_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Integration", "scopes": ["*"]}'
+```
+
+### Audit Logs
+
+| Method | Endpoint | Description | Query Params |
+|--------|----------|-------------|--------------|
+| `GET` | `/v1/audit-logs` | List audit log entries | `?limit=100` |
+
+### Health
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/health` | Health check |
-| `POST` | `/api-keys` | Create API key `{name, scopes, expires_in_days?}` |
-| `POST` | `/webhooks` | Register webhook `{url, events, secret?}` |
-| `WS` | `/ws` | WebSocket for real-time events |
+| `GET` | `/health` | Health check (no auth required) |
 
 ### Error Response Format
 
@@ -497,6 +589,18 @@ Unresolved reference: BugReport
   }
 }
 ```
+
+### Error Codes
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `AUTHENTICATION_ERROR` | 401 | Invalid or missing API key |
+| `AUTHORIZATION_ERROR` | 403 | Insufficient scopes |
+| `INVALID_REQUEST` | 400 | Malformed request body or params |
+| `DEVICE_OFFLINE` | 404 | Device not found or offline |
+| `TELEPHONY_ERROR` | 422 | Call/SMS operation failed |
+| `RATE_LIMITED` | 429 | Too many requests (60/min default) |
+| `INTERNAL_ERROR` | 500 | Unexpected server error |
 
 ---
 
@@ -568,11 +672,26 @@ Inspired by GitHub's dark theme with green accent for phone app identity.
 | `background` | `#F8F9FA` | Light gray |
 | `surface` | `#FFFFFF` | White cards |
 
-### Screen Designs
+### Screen Designs (Material 3 Expressive — Google Phone-inspired)
 
-#### Dialer Screen
-- **Keypad tab:** 4×3 grid of circular buttons with touch ripple, large phone number display at top, green circular call button at bottom
-- **Recents tab:** Calls grouped by date (Today, Yesterday, Earlier), each entry shows avatar circle, name/number, duration, and call direction icon (colored green/red)
+#### Navigation (3 tabs)
+- **Home** — Favorites bar + Recents list (merged, like Google Phone 2025)
+- **Keypad** — Standalone dialpad with FAB access from Home
+- **Messages** — Conversation list with search + compose
+
+#### Home Screen (Favorites + Recents)
+- Top bar: "Phone" title with Settings gear icon
+- **Favorites row:** Horizontal scrollable row of circular contact avatars (up to 8)
+- **Recents list:** Calls grouped by date (Today, Yesterday, etc.)
+- Each entry shows: avatar circle, contact name (resolved from phone number), call direction icon (green/red), time, duration
+- FAB: Green circular button → opens Keypad tab
+- Empty state: "No recent calls" with "Open Keypad" button
+
+#### Keypad Screen
+- Large phone number display at top (36sp, light weight)
+- 4×3 grid of circular dial buttons with touch ripple animation
+- Bottom row: backspace (left) + green call button (center) + spacer (right)
+- Standalone screen — no tabs, accessed via FAB or bottom nav
 
 #### Contacts Screen
 - `LargeTopAppBar` with bold "Contacts" title
@@ -636,9 +755,9 @@ Inspired by GitHub's dark theme with green accent for phone app identity.
 | P1 | Call recording | Implement call recording with AudioRecord |
 | P1 | MMS support | Send/receive MMS messages |
 | P1 | Multi-SIM selection UI | SIM picker in dialer and compose screens |
-| P1 | WebSocket auth | Require JWT for WebSocket connections |
-| P2 | Call history persistence | Show all calls (not just active) in recents |
-| P2 | Contact favorites | Pin frequently-called contacts |
+| P1 | WebSocket auth | ~~Require JWT for WebSocket connections~~ ✅ Done (api_key query param) |
+| P2 | ~~Call history persistence~~ | ~~Show all calls (not just active) in recents~~ ✅ Done |
+| P2 | ~~Contact favorites~~ | ~~Pin frequently-called contacts~~ ✅ Done (favorites row on Home) |
 | P2 | Dark/light theme toggle | User preference in settings |
 | P2 | E2E encryption | Encrypt message bodies for privacy |
 | P3 | VoIP support | WebRTC integration for internet calls |
@@ -674,10 +793,21 @@ versionName = "0.1.0-mvp"
 | `OpenCellApp.kt` | **Modified** | Added `registerPhoneAccount()` method |
 | `MessagingEngine.kt` | **Modified** | Added `getAllMessages()` method |
 | `MessageRoutes.kt` | **Modified** | Fixed broken GET /messages handler |
+| `CallRoutes.kt` | **Rewritten** | GET /calls returns history from DB, added filtering |
+| `OtherRoutes.kt` | **Rewritten** | Fixed events, added audit-logs, api-keys listing |
+| `ApiServer.kt` | **Modified** | WebSocket auth + event broadcasting |
+| `AuthenticationService.kt` | **Modified** | Added listApiKeys(), getRecentAuditLogs() |
+| `CallEngine.kt` | **Modified** | Added getCallEntityById() |
 | `Theme.kt` | **Rewritten** | Custom dark green Material 3 theme |
-| `DialerScreen.kt` | **Rewritten** | Phone-app-style keypad + recents |
+| `Navigation.kt` | **Rewritten** | 3-tab nav: Home, Keypad, Messages |
+| `HomeScreen.kt` | **Created** | Favorites bar + Recents list (Google Phone style) |
+| `HomeViewModel.kt` | **Created** | Contacts + recent calls for Home tab |
+| `KeypadScreen.kt` | **Created** | Standalone keypad (no tabs) |
+| `DialerScreen.kt` | **Simplified** | Thin wrapper delegating to KeypadScreen |
+| `DialerViewModel.kt` | **Modified** | Added ContactEngine for name resolution |
 | `ContactsScreen.kt` | **Rewritten** | Letter-section headers, avatars |
 | `MessagesScreen.kt` | **Rewritten** | Conversation cards, FAB |
+| `MessagesViewModel.kt` | **Modified** | Added ContactEngine for name resolution |
 | `ConversationScreen.kt` | **Rewritten** | Message bubbles, contact header |
 | `ComposeScreen.kt` | **Rewritten** | Contact suggestions, styled inputs |
 | `SettingsScreen.kt` | **Rewritten** | Grouped cards, server toggle |

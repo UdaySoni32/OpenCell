@@ -22,8 +22,8 @@ import io.opencell.ui.TestingDashboard
  * Navigation routes for the OpenCell app.
  */
 object Routes {
-    const val DIALER = "dialer"
-    const val RECENTS = "recents"
+    const val HOME = "home"
+    const val KEYPAD = "keypad"
     const val MESSAGES = "messages"
     const val CONVERSATION = "conversation/{threadId}"
     const val COMPOSE_MESSAGE = "compose"
@@ -40,17 +40,17 @@ object Routes {
 }
 
 /**
- * Bottom navigation items.
+ * Bottom navigation items — 3 tabs like the new Google Phone app.
+ * Home = Favorites + Recents (merged), Keypad, Messages.
  */
 enum class BottomNavItem(
     val route: String,
     val label: String,
     val icon: ImageVector
 ) {
-    DIALER(Routes.DIALER, "Phone", Icons.Default.Phone),
-    MESSAGES(Routes.MESSAGES, "Messages", Icons.Default.ChatBubble),
-    CONTACTS(Routes.CONTACTS, "Contacts", Icons.Default.Contacts),
-    SETTINGS(Routes.SETTINGS, "Settings", Icons.Default.Settings)
+    HOME(Routes.HOME, "Home", Icons.Default.Home),
+    KEYPAD(Routes.KEYPAD, "Keypad", Icons.Default.Dialpad),
+    MESSAGES(Routes.MESSAGES, "Messages", Icons.Default.ChatBubble)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,7 +89,7 @@ fun MainNavigation() {
                             onClick = {
                                 if (currentRoute != item.route) {
                                     navController.navigate(item.route) {
-                                        popUpTo(Routes.DIALER) { saveState = true }
+                                        popUpTo(Routes.HOME) { saveState = true }
                                         launchSingleTop = true
                                         restoreState = true
                                     }
@@ -110,11 +110,33 @@ fun MainNavigation() {
     ) { paddingValues ->
         NavHost(
             navController = navController,
-            startDestination = Routes.DIALER,
+            startDestination = Routes.HOME,
             modifier = Modifier.padding(paddingValues)
         ) {
-            composable(Routes.DIALER) {
-                io.opencell.ui.dialer.DialerScreen()
+            composable(Routes.HOME) {
+                io.opencell.ui.home.HomeScreen(
+                    onContactClick = { number ->
+                        val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number"))
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        navController.context.startActivity(intent)
+                    },
+                    onKeypadClick = {
+                        navController.navigate(Routes.KEYPAD) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onRecentCallClick = { number ->
+                        val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number"))
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        navController.context.startActivity(intent)
+                    },
+                    onSettingsClick = {
+                        navController.navigate(Routes.SETTINGS)
+                    }
+                )
+            }
+            composable(Routes.KEYPAD) {
+                io.opencell.ui.dialer.KeypadScreen()
             }
             composable(Routes.MESSAGES) {
                 io.opencell.ui.messages.MessagesScreen(

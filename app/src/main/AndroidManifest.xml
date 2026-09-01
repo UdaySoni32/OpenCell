@@ -21,6 +21,7 @@
     <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.BROADCAST_SMS" />
+    <uses-permission android:name="android.permission.BROADCAST_WAP_PUSH" />
 
     <!-- Contacts Permissions -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -36,20 +37,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- Recording (requires runtime permission) -->
+    <!-- Recording -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <!-- Storage for media -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-
-    <!-- Role requires this for default dialer -->
+    <!-- Role requirements -->
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
-
-    <!-- Receive MMS requires this carrier permission -->
     <uses-permission android:name="android.permission.SEND_RESPOND_VIA_MESSAGE" />
 
     <application
@@ -63,7 +55,6 @@
         android:theme="@style/Theme.OpenCell"
         tools:targetApi="35">
 
-        <!-- Main Activity - Phone UI -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -77,30 +68,27 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
-            <!-- DIAL: shown in app chooser when user taps a phone number -->
+            <!-- Dialer role filters -->
             <intent-filter>
                 <action android:name="android.intent.action.DIAL" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="tel" />
             </intent-filter>
-
-            <!-- CALL: required for app to be considered as default phone app -->
             <intent-filter>
-                <action android:name="android.intent.action.CALL" />
+                <action android:name="android.intent.action.DIAL" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="tel" />
             </intent-filter>
-
-            <!-- VIEW tel: links -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="tel" />
             </intent-filter>
 
-            <!-- SENDTO sms: required for app to be considered as default SMS app -->
+            <!-- SMS role filters -->
             <intent-filter>
+                <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SENDTO" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -111,24 +99,47 @@
             </intent-filter>
         </activity>
 
-        <!-- Role request activity -->
         <activity
             android:name=".RoleRequestActivity"
             android:exported="false"
             android:theme="@style/Theme.OpenCell" />
 
-        <!-- SMS Handler Receiver -->
+        <!-- Mandatory SMS Receiver -->
         <receiver
             android:name="io.opencell.platform.sms.SmsReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_SMS">
             <intent-filter android:priority="999">
-                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
-                <action android:name="android.provider.Telephony.WAP_PUSH_RECEIVED" />
+                <action android:name="android.provider.Telephony.SMS_DELIVER" />
             </intent-filter>
         </receiver>
 
-        <!-- Incoming Call Service (ConnectionService for phone role) -->
+        <!-- Mandatory MMS/WAP Receiver -->
+        <receiver
+            android:name="io.opencell.platform.sms.MmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_WAP_PUSH">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
+                <data android:mimeType="application/vnd.wap.mms-message" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Mandatory Headless SMS Service -->
+        <service
+            android:name="io.opencell.platform.sms.HeadlessSmsSendService"
+            android:exported="true"
+            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+        </service>
+
         <service
             android:name="io.opencell.platform.telecom.OpenCellConnectionService"
             android:exported="true"
@@ -138,46 +149,30 @@
             </intent-filter>
         </service>
 
-        <!-- InCall Service for call UI -->
         <service
             android:name="io.opencell.platform.telecom.OpenCellInCallService"
             android:exported="true"
             android:permission="android.permission.BIND_INCALL_SERVICE">
             <meta-data
-                android:name="android.telecom.InCallService"
+                android:name="android.telecom.IN_CALL_SERVICE_UI"
                 android:value="true" />
             <intent-filter>
                 <action android:name="android.telecom.InCallService" />
             </intent-filter>
         </service>
 
-        <!-- API Server Foreground Service -->
         <service
             android:name="io.opencell.server.ApiServerService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- Boot Receiver for persistence -->
         <receiver
             android:name="io.opencell.core.BootReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
-
-        <!-- WorkManager initializer -->
-        <provider
-            android:name="androidx.startup.InitializationProvider"
-            android:authorities="${applicationId}.androidx-startup"
-            android:exported="false"
-            tools:node="merge">
-            <meta-data
-                android:name="androidx.work.WorkManagerInitializer"
-                android:value="androidx.startup"
-                tools:node="remove" />
-        </provider>
 
     </application>
 </manifest>
