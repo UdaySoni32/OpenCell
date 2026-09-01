@@ -9,18 +9,38 @@ import io.opencell.core.model.*
 import io.opencell.server.api.ApiRoutes
 import io.opencell.server.api.ApiServerAttributes
 import io.opencell.server.api.BadRequestException
+import kotlinx.coroutines.flow.first
 
 fun Route.callsRoutes(routes: ApiRoutes) {
     route("/calls") {
 
-        // List calls (active and recent)
+        // List calls — returns ALL calls from DB (history + active), with optional filtering
         get {
-            val deviceId = routes.deviceEngine.getLocalDeviceId()
-            val activeCalls = routes.callEngine.activeCalls.value
-            val allCallModels = activeCalls.map { call -> call.toApiMap() }
+            val deviceId = call.parameters["device_id"]
+            val state = call.parameters["state"]
+            val limit = call.parameters["limit"]?.toIntOrNull() ?: 100
+
+            val calls = if (!deviceId.isNullOrBlank()) {
+                routes.callEngine.getCallHistory().first().filter { it.deviceId == deviceId }
+            } else {
+                routes.callEngine.getCallHistory().first()
+            }
+
+            val filtered = if (!state.isNullOrBlank()) {
+                calls.filter { it.state.equals(state, ignoreCase = true) }
+            } else {
+                calls
+            }
+
+            val limited = filtered.take(limit)
+
             call.respond(mapOf(
-                "data" to allCallModels,
-                "meta" to mapOf("total" to allCallModels.size)
+                "data" to limited.map { it.toApiMap() },
+                "meta" to mapOf(
+                    "total" to filtered.size,
+                    "limit" to limit,
+                    "returned" to limited.size
+                )
             ))
         }
 
@@ -52,18 +72,17 @@ fun Route.callsRoutes(routes: ApiRoutes) {
             )
         }
 
-        // Get a specific call
+        // Get a specific call — searches DB, not just active calls
         get("/{call_id}") {
             val callId = call.parameters["call_id"] ?: throw BadRequestException("Missing call_id")
-            val activeCalls = routes.callEngine.activeCalls.value
-            val found = activeCalls.firstOrNull { it.id == callId }
-            if (found == null) {
+            val entity = routes.callEngine.getCallEntityById(callId)
+            if (entity == null) {
                 call.respond(
                     HttpStatusCode.NotFound,
                     mapOf("error" to mapOf("code" to "NOT_FOUND", "message" to "Call $callId not found"))
                 )
             } else {
-                call.respond(mapOf("data" to found.toApiMap()))
+                call.respond(mapOf("data" to entity.toApiMap()))
             }
         }
 
@@ -144,7 +163,24 @@ fun Route.callsRoutes(routes: ApiRoutes) {
     }
 }
 
-private fun Call.toApiMap() = mapOf(
+private fun io.opencell.core.database.entity.CallEntity.toApiMap() = mapOf(
+    "id" to id,
+    "device_id" to deviceId,
+    "subscription_id" to subscriptionId,
+    "direction" to direction,
+    "from" to fromNumber,
+    "to" to toNumber,
+    "state" to state,
+    "started_at" to startedAt,
+    "answered_at" to answeredAt,
+    "ended_at" to endedAt,
+    "duration_ms" to durationMs,
+    "display_name" to displayName,
+    "is_emergency" to isEmergency,
+    "audio_state" to audioState
+)
+
+private fun io.opencell.core.model.Call.toApiMap() = mapOf(
     "id" to id,
     "device_id" to deviceId,
     "subscription_id" to subscriptionId,
@@ -156,7 +192,6 @@ private fun Call.toApiMap() = mapOf(
     "answered_at" to answeredAt,
     "ended_at" to endedAt,
     "duration_ms" to durationMs,
-    "duration_seconds" to durationSeconds,
     "display_name" to displayName,
     "is_emergency" to isEmergency,
     "audio_state" to audioState.name

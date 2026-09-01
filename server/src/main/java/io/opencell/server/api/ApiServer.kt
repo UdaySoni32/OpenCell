@@ -19,7 +19,13 @@ import io.opencell.core.model.ErrorCodes
 import io.opencell.core.crypto.CryptoUtils
 import io.opencell.server.auth.AuthenticationService
 import io.opencell.server.api.routes.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
 
@@ -192,21 +198,86 @@ class ApiServer(
                 webhooksRoutes(routes)
                 projectsRoutes(routes)
                 apiKeyRoutes(routes)
+                auditLogRoutes(routes)
                 networkRoutes(routes)
                 simRoutes(routes)
                 capabilitiesRoutes(routes)
             }
 
+            // WebSocket endpoint with authentication via query param
             webSocket("/v1/events/stream") {
+                // Authenticate via query param: ?api_key=oc_xxxxx
+                val apiKey = call.request.queryParameters["api_key"]
+                if (apiKey == null) {
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Missing api_key query parameter"))
+                    return@webSocket
+                }
+
+                val authResult = authService.authenticate(apiKey)
+                if (!authResult.authenticated) {
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Authentication failed: ${authResult.error}"))
+                    return@webSocket
+                }
+
                 val sessionId = CryptoUtils.generateId("ws")
                 wsClients[sessionId] = this
                 try {
-                    for (frame in incoming) { /* handle stream */ }
+                    // Send connected confirmation
+                    send(Frame.Text(buildJsonObject {
+                        put("type", JsonPrimitive("connected"))
+                        put("session_id", JsonPrimitive(sessionId))
+                        put("message", JsonPrimitive("Connected to OpenCell event stream"))
+                    }.toString()))
+
+                    // Keep connection alive and listen for client messages
+                    for (frame in incoming) {
+                        // Client can send ping/pong or commands
+                        if (frame is Frame.Text) {
+                            // Handle client messages if needed
+                        }
+                    }
                 } finally {
                     wsClients.remove(sessionId)
                 }
             }
         }
+    }
+
+    /**
+     * Broadcast an event to all connected WebSocket clients.
+     * Called by EventEngine when events are emitted.
+     */
+    suspend fun broadcastEvent(eventName: String, deviceId: String, data: Map<String, Any>) {
+        if (wsClients.isEmpty()) return
+
+        val payload = buildJsonObject {
+            put("type", JsonPrimitive("event"))
+            put("event", JsonPrimitive(eventName))
+            put("device_id", JsonPrimitive(deviceId))
+            put("timestamp", JsonPrimitive(System.currentTimeMillis()))
+            data.forEach { (k, v) ->
+                put(k, when (v) {
+                    is String -> JsonPrimitive(v)
+                    is Number -> JsonPrimitive(v)
+                    is Boolean -> JsonPrimitive(v)
+                    else -> JsonPrimitive(v.toString())
+                })
+            }
+        }.toString()
+
+        val frame = Frame.Text(payload)
+        val deadClients = mutableListOf<String>()
+
+        wsClients.forEach { (sessionId, session) ->
+            try {
+                session.send(frame)
+            } catch (e: Exception) {
+                deadClients.add(sessionId)
+            }
+        }
+
+        // Clean up dead connections
+        deadClients.forEach { wsClients.remove(it) }
     }
 }
 

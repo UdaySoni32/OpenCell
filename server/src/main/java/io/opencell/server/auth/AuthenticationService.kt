@@ -5,6 +5,7 @@ import io.opencell.core.database.dao.ApiKeyDao
 import io.opencell.core.database.dao.AuditLogDao
 import io.opencell.core.database.entity.ApiKeyEntity
 import io.opencell.core.database.entity.AuditLogEntity
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.builtins.ListSerializer
@@ -109,6 +110,14 @@ class AuthenticationService @Inject constructor(
         if (timestamps.size >= maxPerMinute) return false
         timestamps.add(now)
         return true
+    }
+
+    suspend fun listApiKeys(projectId: String): List<ApiKeyEntity> {
+        return apiKeyDao.getActiveKeysForProject(projectId).first()
+    }
+
+    suspend fun getRecentAuditLogs(limit: Int = 100): List<AuditLogEntity> {
+        return auditLogDao.getRecentEntries(limit).first()
     }
 
     private fun parseScopes(scopesJson: String): List<String> {

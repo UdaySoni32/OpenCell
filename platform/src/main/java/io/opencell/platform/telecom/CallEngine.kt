@@ -225,6 +225,10 @@ class CallEngine @Inject constructor(
         return callDao.getAllCalls()
     }
 
+    suspend fun getCallEntityById(callId: String): io.opencell.core.database.entity.CallEntity? {
+        return callDao.getCall(callId)
+    }
+
     /**
      * Find the most recent outbound call record for a given phone number.
      * Used by [InCallService] to match a Telecom framework call to an existing
