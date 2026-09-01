@@ -4,27 +4,36 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.opencell.core.database.entity.CallEntity
+import io.opencell.platform.contacts.ContactEngine
 import io.opencell.platform.devices.DeviceEngine
 import io.opencell.platform.telecom.CallEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
+
+data class CallDisplayInfo(
+    val call: CallEntity,
+    val contactName: String? = null
+)
 
 data class DialerUiState(
     val phoneNumber: String = "",
     val isCallInProgress: Boolean = false,
     val callId: String? = null,
-    val recentCalls: List<CallEntity> = emptyList(),
+    val recentCalls: List<CallDisplayInfo> = emptyList(),
     val error: String? = null
 )
 
 @HiltViewModel
 class DialerViewModel @Inject constructor(
     private val callEngine: CallEngine,
-    private val deviceEngine: DeviceEngine
+    private val deviceEngine: DeviceEngine,
+    private val contactEngine: ContactEngine
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DialerUiState())
@@ -40,7 +49,17 @@ class DialerViewModel @Inject constructor(
             callEngine.getCallHistory()
                 .catch { /* ignore DB errors */ }
                 .collect { calls ->
-                    _uiState.value = _uiState.value.copy(recentCalls = calls)
+                    // Resolve contact names in background
+                    val displayCalls = withContext(Dispatchers.IO) {
+                        calls.map { call ->
+                            val number = if (call.direction == "INBOUND") call.fromNumber else call.toNumber
+                            val name = if (number.isNotBlank()) {
+                                contactEngine.lookupByPhoneNumber(number)?.displayName
+                            } else null
+                            CallDisplayInfo(call = call, contactName = name)
+                        }
+                    }
+                    _uiState.value = _uiState.value.copy(recentCalls = displayCalls)
                 }
         }
     }

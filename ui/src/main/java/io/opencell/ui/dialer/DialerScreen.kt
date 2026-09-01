@@ -38,7 +38,7 @@ fun DialerScreen(
     viewModel: DialerViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Recents, 1 = Keypad
 
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(uiState.error) {
@@ -57,18 +57,19 @@ fun DialerScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Tab selector
+            // Tab selector - Recents first, Keypad second
             TabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary
+                contentColor = MaterialTheme.colorScheme.primary,
+                indicator = {}
             ) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
                     text = {
                         Text(
-                            "Keypad",
+                            "Recents",
                             fontWeight = if (selectedTab == 0) FontWeight.SemiBold else FontWeight.Normal
                         )
                     }
@@ -77,40 +78,30 @@ fun DialerScreen(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                     text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "Recents",
-                                fontWeight = if (selectedTab == 1) FontWeight.SemiBold else FontWeight.Normal
-                            )
-                            if (uiState.recentCalls.isNotEmpty()) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(8.dp)
-                                ) {}
-                            }
-                        }
+                        Text(
+                            "Keypad",
+                            fontWeight = if (selectedTab == 1) FontWeight.SemiBold else FontWeight.Normal
+                        )
                     }
                 )
             }
 
             when (selectedTab) {
-                0 -> KeypadTab(
-                    phoneNumber = uiState.phoneNumber,
-                    onPhoneNumberChange = viewModel::onPhoneNumberChange,
-                    onCall = { viewModel.dial() }
-                )
-                1 -> RecentsTab(
+                0 -> RecentsTab(
                     calls = uiState.recentCalls,
                     onCallClick = { number ->
                         viewModel.onPhoneNumberChange(number)
-                        selectedTab = 0
+                        selectedTab = 1
                     },
                     onDialNumber = { number ->
                         viewModel.onPhoneNumberChange(number)
                         viewModel.dial()
                     }
+                )
+                1 -> KeypadTab(
+                    phoneNumber = uiState.phoneNumber,
+                    onPhoneNumberChange = viewModel::onPhoneNumberChange,
+                    onCall = { viewModel.dial() }
                 )
             }
         }
@@ -277,7 +268,7 @@ private fun DialPadButton(
 
 @Composable
 private fun RecentsTab(
-    calls: List<io.opencell.core.database.entity.CallEntity>,
+    calls: List<CallDisplayInfo>,
     onCallClick: (String) -> Unit,
     onDialNumber: (String) -> Unit
 ) {
@@ -308,8 +299,8 @@ private fun RecentsTab(
     }
 
     // Group calls by date
-    val grouped = calls.groupBy { call ->
-        val cal = Calendar.getInstance().apply { timeInMillis = call.startedAt }
+    val grouped = calls.groupBy { displayInfo ->
+        val cal = Calendar.getInstance().apply { timeInMillis = displayInfo.call.startedAt }
         val now = Calendar.getInstance()
         when {
             cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
@@ -317,8 +308,8 @@ private fun RecentsTab(
             cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
             cal.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR) - 1 -> "Yesterday"
             cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) ->
-                SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date(call.startedAt))
-            else -> SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(call.startedAt))
+                SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date(displayInfo.call.startedAt))
+            else -> SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(displayInfo.call.startedAt))
         }
     }
 
@@ -336,11 +327,12 @@ private fun RecentsTab(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                 )
             }
-            items(dayCalls, key = { it.id }) { call ->
+            items(dayCalls, key = { it.call.id }) { displayInfo ->
                 CallHistoryItem(
-                    call = call,
+                    displayInfo = displayInfo,
                     onClick = {
-                        val number = if (call.direction == "INBOUND") call.fromNumber else call.toNumber
+                        val number = if (displayInfo.call.direction == "INBOUND")
+                            displayInfo.call.fromNumber else displayInfo.call.toNumber
                         onCallClick(number)
                     },
                     onDialNumber = { number ->
@@ -354,13 +346,15 @@ private fun RecentsTab(
 
 @Composable
 private fun CallHistoryItem(
-    call: io.opencell.core.database.entity.CallEntity,
+    displayInfo: CallDisplayInfo,
     onClick: () -> Unit,
     onDialNumber: (String) -> Unit
 ) {
+    val call = displayInfo.call
     val number = if (call.direction == "INBOUND") call.fromNumber else call.toNumber
     val isInbound = call.direction == "INBOUND"
     val isMissed = call.state == CallState.MISSED.name
+    val displayName = displayInfo.contactName ?: number.ifBlank { "Unknown" }
 
     val iconColor = when {
         isMissed -> MaterialTheme.colorScheme.error
@@ -377,7 +371,7 @@ private fun CallHistoryItem(
     ListItem(
         headlineContent = {
             Text(
-                number.ifBlank { "Unknown" },
+                displayName,
                 fontWeight = FontWeight.Medium,
                 color = if (isMissed)
                     MaterialTheme.colorScheme.error
@@ -409,12 +403,21 @@ private fun CallHistoryItem(
                 color = iconColor.copy(alpha = 0.12f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        directionIcon,
-                        contentDescription = null,
-                        tint = iconColor,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    if (displayInfo.contactName != null) {
+                        Text(
+                            text = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = iconColor
+                        )
+                    } else {
+                        Icon(
+                            directionIcon,
+                            contentDescription = null,
+                            tint = iconColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         },

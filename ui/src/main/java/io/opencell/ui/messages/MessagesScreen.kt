@@ -134,11 +134,11 @@ fun MessagesScreen(
                     ) {
                         items(
                             items = uiState.filteredConversations,
-                            key = { it.threadId }
-                        ) { conversation ->
+                            key = { it.conversation.threadId }
+                        ) { displayInfo ->
                             ConversationItem(
-                                conversation = conversation,
-                                onClick = { onConversationClick(conversation.threadId) }
+                                displayInfo = displayInfo,
+                                onClick = { onConversationClick(displayInfo.conversation.threadId) }
                             )
                         }
                     }
@@ -150,10 +150,11 @@ fun MessagesScreen(
 
 @Composable
 fun ConversationItem(
-    conversation: Conversation,
+    displayInfo: ConversationDisplayInfo,
     onClick: () -> Unit
 ) {
-    val displayName = conversation.contactName ?: conversation.contactAddress
+    val conversation = displayInfo.conversation
+    val displayName = displayInfo.contactName ?: conversation.contactAddress
 
     ListItem(
         headlineContent = {
