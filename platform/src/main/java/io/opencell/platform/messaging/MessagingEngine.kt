@@ -1,6 +1,7 @@
 package io.opencell.platform.messaging
 
 import android.content.Context
+import android.provider.Telephony
 import android.telephony.SmsManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.opencell.core.crypto.CryptoUtils
@@ -178,6 +179,73 @@ class MessagingEngine @Inject constructor(
             actorType = "system", actorId = "sms_receiver", resourceType = "message",
             resourceId = messageId, details = """{"from":"$sender"}"""
         ))
+    }
+
+    /**
+     * Import recent SMS messages from the system SMS provider (default SMS app history).
+     * This populates the messages list with SMS sent/received before OpenCell was installed.
+     */
+    suspend fun importSystemSmsHistory(deviceId: String) {
+        try {
+            val projection = arrayOf(
+                Telephony.Sms._ID,
+                Telephony.Sms.ADDRESS,
+                Telephony.Sms.BODY,
+                Telephony.Sms.DATE,
+                Telephony.Sms.TYPE,
+                Telephony.Sms.READ
+            )
+            val cursor = context.contentResolver.query(
+                Telephony.Sms.CONTENT_URI,
+                projection,
+                null, null,
+                "${Telephony.Sms.DATE} DESC"
+            )
+            cursor?.use { c ->
+                val idIdx = c.getColumnIndex(Telephony.Sms._ID)
+                val addrIdx = c.getColumnIndex(Telephony.Sms.ADDRESS)
+                val bodyIdx = c.getColumnIndex(Telephony.Sms.BODY)
+                val dateIdx = c.getColumnIndex(Telephony.Sms.DATE)
+                val typeIdx = c.getColumnIndex(Telephony.Sms.TYPE)
+
+                var count = 0
+                while (c.moveToNext() && count < 100) {
+                    val sysId = c.getString(idIdx) ?: continue
+                    val address = c.getString(addrIdx) ?: ""
+                    val body = c.getString(bodyIdx) ?: continue
+                    val date = c.getLong(dateIdx)
+                    val type = c.getInt(typeIdx)
+
+                    // Skip if we already have this message (by checking thread + timestamp)
+                    val threadId = generateThreadId(address)
+                    val direction = when (type) {
+                        Telephony.Sms.MESSAGE_TYPE_SENT,
+                        Telephony.Sms.MESSAGE_TYPE_QUEUED -> MessageDirection.OUTBOUND
+                        else -> MessageDirection.INBOUND
+                    }
+                    val sender = if (direction == MessageDirection.INBOUND) address else ""
+                    val recipient = if (direction == MessageDirection.OUTBOUND) address else ""
+
+                    val entity = MessageEntity(
+                        id = "sys_$sysId",
+                        deviceId = deviceId,
+                        subscriptionId = 0,
+                        type = MessageType.SMS.name,
+                        direction = direction.name,
+                        sender = sender,
+                        recipient = recipient,
+                        body = body,
+                        state = MessageState.RECEIVED.name,
+                        createdAt = date,
+                        threadId = threadId
+                    )
+                    messageDao.upsertMessage(entity)
+                    count++
+                }
+            }
+        } catch (e: Exception) {
+            // Permission not granted or query failed — silently ignore
+        }
     }
 
     /**

@@ -15,6 +15,7 @@ import dagger.hilt.android.HiltAndroidApp
 import io.opencell.platform.telecom.OpenCellConnectionService
 import io.opencell.server.ApiServerService
 import io.opencell.server.api.ApiServer
+import io.opencell.server.auth.AuthenticationService
 import io.opencell.platform.devices.DeviceEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,9 @@ class OpenCellApp : Application() {
     @Inject
     lateinit var deviceEngine: DeviceEngine
 
+    @Inject
+    lateinit var authService: AuthenticationService
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
@@ -43,9 +47,14 @@ class OpenCellApp : Application() {
         // Set static server reference for the foreground service
         ApiServerService.serverInstance = apiServer
 
-        // Initialize device identity
+        // Initialize device identity and create default API key
         appScope.launch {
-            deviceEngine.getOrCreateLocalDevice()
+            try {
+                deviceEngine.getOrCreateLocalDevice()
+                authService.createDefaultApiKeyIfNeeded()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to initialize device or create API key", e)
+            }
         }
 
         // Start API server as a foreground service

@@ -1,5 +1,7 @@
 package io.opencell.ui.messages
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,6 +39,7 @@ fun ConversationScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
@@ -99,7 +103,14 @@ fun ConversationScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { }) {
+                    IconButton(onClick = {
+                        val number = uiState.contactAddress
+                        if (number.isNotBlank()) {
+                            val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number"))
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            try { context.startActivity(intent) } catch (_: Exception) { }
+                        }
+                    }) {
                         Icon(
                             Icons.Default.Phone,
                             contentDescription = "Call",

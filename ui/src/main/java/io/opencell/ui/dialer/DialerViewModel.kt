@@ -1,5 +1,8 @@
 package io.opencell.ui.dialer
 
+import android.content.Context
+import android.content.Intent
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -8,8 +11,11 @@ import io.opencell.platform.contacts.ContactEngine
 import io.opencell.platform.devices.DeviceEngine
 import io.opencell.platform.telecom.CallEngine
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
@@ -19,6 +25,12 @@ import javax.inject.Inject
 data class CallDisplayInfo(
     val call: CallEntity,
     val contactName: String? = null
+)
+
+data class CallStartedEvent(
+    val callId: String,
+    val phoneNumber: String,
+    val callerName: String?
 )
 
 data class DialerUiState(
@@ -38,6 +50,9 @@ class DialerViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(DialerUiState())
     val uiState: StateFlow<DialerUiState> = _uiState.asStateFlow()
+
+    private val _callStarted = MutableSharedFlow<CallStartedEvent>()
+    val callStarted: SharedFlow<CallStartedEvent> = _callStarted.asSharedFlow()
 
     init {
         observeRecentCalls()
@@ -79,6 +94,14 @@ class DialerViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(phoneNumber = number)
     }
 
+    /**
+     * Place an outgoing call and launch the ActiveCallActivity.
+     * [context] is needed to start the activity — pass it from the Composable.
+     */
+    /**
+     * Place an outgoing call. The Composable should observe [callStarted]
+     * to launch the ActiveCallActivity (avoids cross-module dependency).
+     */
     fun dial() {
         val number = _uiState.value.phoneNumber
         if (number.isBlank()) return
@@ -96,6 +119,8 @@ class DialerViewModel @Inject constructor(
                         callId = call.id,
                         error = null
                     )
+                    // Emit event for Composable to launch the activity
+                    _callStarted.emit(CallStartedEvent(call.id, number, null))
                 },
                 onFailure = { error ->
                     _uiState.value = _uiState.value.copy(

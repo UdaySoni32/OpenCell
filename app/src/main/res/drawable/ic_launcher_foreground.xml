@@ -4,16 +4,37 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Cell tower icon -->
+    <!-- Signal waves -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,30 L54,78 M44,54 L64,54 M48,44 L60,44 M48,64 L60,64 M40,38 L68,38 M40,70 L68,70"
+        android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="3"/>
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M38,38 A24,24 0 0,1 70,38"/>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M42,42 A18,18 0 0,1 66,42"/>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M46,46 A12,12 0 0,1 62,46"/>
+    <!-- Phone handset -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M54,24 A4,4 0 1,1 54.01,24Z"/>
+        android:pathData="M44,56 C44,56 42,58 40,58 C38,58 36,56 36,54 L36,50 C36,48 38,46 40,46 L44,46 C46,46 48,44 48,42 L48,38 C48,36 46,34 44,34 L40,34 C38,34 36,36 36,38 L36,42 C36,52 44,60 54,62 L58,62 C60,62 62,60 62,58 L62,54 C62,52 60,50 58,50 L54,50 C52,50 50,52 50,54 L50,58 C50,60 48,62 46,62 L44,62 C44,62 44,58 44,56Z"/>
+    <!-- Signal antenna base -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M54,80 A4,4 0 1,1 54.01,80Z"/>
+        android:pathData="M54,62 L54,72 M48,72 L60,72"/>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M54,62 L54,72 M48,72 L60,72"/>
 </vector>

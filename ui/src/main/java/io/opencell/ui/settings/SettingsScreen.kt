@@ -25,6 +25,7 @@ fun SettingsScreen(
     onDeviceClick: () -> Unit,
     onCapabilitiesClick: () -> Unit,
     onDeveloperClick: () -> Unit,
+    onApiDocsClick: () -> Unit = {},
     onRoleSetupClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -174,7 +175,27 @@ fun SettingsScreen(
                         icon = Icons.Outlined.Tune,
                         title = "Remote Access",
                         subtitle = "Configure tunnels and proxies",
-                        onClick = { }
+                        onClick = {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://github.com/nicegoodboy/OpenCell"))
+                            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            try { context.startActivity(intent) } catch (_: Exception) { }
+                        }
+                    )
+                }
+            }
+
+            // ── API ──
+            item {
+                SettingsSectionHeader("API")
+            }
+            item {
+                SettingsCard {
+                    SettingsItem(
+                        icon = Icons.Outlined.Description,
+                        title = "API Documentation",
+                        subtitle = "Setup guide, endpoints, and curl examples",
+                        onClick = onApiDocsClick
                     )
                 }
             }
@@ -185,6 +206,24 @@ fun SettingsScreen(
             }
             item {
                 SettingsCard {
+                    SettingsItem(
+                        icon = Icons.Outlined.Phone,
+                        title = "Call & SMS Demo",
+                        subtitle = "Simulate calls and test SMS",
+                        onClick = {
+                            val intent = android.content.Intent().apply {
+                                setClassName(
+                                    context,
+                                    "io.opencell.app.call.DemoActivity"
+                                )
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            try {
+                                context.startActivity(intent)
+                            } catch (_: Exception) { }
+                        }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     SettingsItem(
                         icon = Icons.Outlined.BugReport,
                         title = "Testing Dashboard",
@@ -211,7 +250,7 @@ fun SettingsScreen(
                         icon = Icons.Outlined.EventNote,
                         title = "Event Log",
                         subtitle = "View system events",
-                        onClick = { }
+                        onClick = onDeveloperClick
                     )
                 }
             }

@@ -1,6 +1,7 @@
 package io.opencell.ui.dialer
 
 import androidx.compose.animation.animateColorAsState
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -15,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,6 +30,28 @@ fun KeypadScreen(
     viewModel: DialerViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Launch ActiveCallActivity when a call is started
+    LaunchedEffect(Unit) {
+        viewModel.callStarted.collect { event ->
+            val intent = Intent().apply {
+                setClassName(
+                    context,
+                    "io.opencell.app.call.ActiveCallActivity"
+                )
+                putExtra("call_id", event.callId)
+                putExtra("phone_number", event.phoneNumber)
+                putExtra("display_name", event.callerName)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                // Activity not found — ignore silently
+            }
+        }
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(uiState.error) {
@@ -48,7 +72,7 @@ fun KeypadScreen(
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.weight(0.8f))
 
             // Phone number display
             Text(
@@ -92,7 +116,7 @@ fun KeypadScreen(
                 Spacer(modifier = Modifier.height(4.dp))
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.weight(1.2f))
 
             // Bottom action row: backspace + call button
             Row(

@@ -15,6 +15,7 @@ import javax.inject.Inject
 
 data class ContactsUiState(
     val contacts: List<Contact> = emptyList(),
+    val starredIds: Set<String> = emptySet(),
     val searchQuery: String = "",
     val isLoading: Boolean = false,
     val error: String? = null
@@ -44,10 +45,22 @@ class ContactsViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 val contacts = withContext(Dispatchers.IO) {
-                    contactEngine.getAllContacts(limit = 500)
+                    val all = contactEngine.getAllContacts(limit = 500)
+                    val starred = contactEngine.getStarredContacts(limit = 100)
+                    val starredIds = starred.map { it.id }.toSet()
+
+                    // Sort: starred first, then A-Z, unknown/blank names last
+                    all.sortedWith(compareBy<Contact> { it.id !in starredIds }
+                        .thenBy { it.displayName.firstOrNull()?.let { c ->
+                            if (c.isLetter()) c.uppercaseChar() else null
+                        } ?: Char.MAX_VALUE }
+                        .thenBy { it.displayName })
                 }
                 _uiState.value = _uiState.value.copy(
                     contacts = contacts,
+                    starredIds = withContext(Dispatchers.IO) {
+                        contactEngine.getStarredContacts(limit = 100).map { it.id }.toSet()
+                    },
                     isLoading = false,
                     error = null
                 )

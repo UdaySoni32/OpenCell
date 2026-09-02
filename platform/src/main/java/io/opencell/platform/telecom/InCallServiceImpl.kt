@@ -1,6 +1,9 @@
 package io.opencell.platform.telecom
 
+import android.database.Cursor
+import android.net.Uri
 import android.os.IBinder
+import android.provider.ContactsContract
 import android.telecom.Call
 import android.telecom.InCallService
 import android.util.Log
@@ -12,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * InCallService for OpenCell.
@@ -28,7 +32,7 @@ class OpenCellInCallService : InCallService() {
         private const val TAG = "OpenCellInCallSvc"
     }
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val callEngine: CallEngine by lazy {
         val entryPoint = EntryPointAccessors.fromApplication(
@@ -46,8 +50,19 @@ class OpenCellInCallService : InCallService() {
         entryPoint.deviceEngine()
     }
 
+    private val callUiDelegate: CallUiDelegate by lazy {
+        val entryPoint = EntryPointAccessors.fromApplication(
+            applicationContext,
+            PlatformEntryPoint::class.java
+        )
+        entryPoint.callUiDelegate()
+    }
+
     // Map from Telecom Call object hashCode → our internal call ID
     private val telecomCallToId = mutableMapOf<Int, String>()
+
+    // Track whether we've launched the incoming call activity for each call
+    private val launchedIncomingFor = mutableSetOf<Int>()
 
     override fun onBind(intent: android.content.Intent?): IBinder? = super.onBind(intent)
 
@@ -56,29 +71,51 @@ class OpenCellInCallService : InCallService() {
         Log.d(TAG, "onCallAdded: state=${telecomCall.state}")
 
         serviceScope.launch {
-            val deviceId = deviceEngine.getLocalDeviceId()
+            val deviceId = withContext(Dispatchers.IO) { deviceEngine.getLocalDeviceId() }
             val details = telecomCall.details
             val phoneNumber = details.handle?.schemeSpecificPart ?: ""
-            val displayName = details.callerDisplayName ?: ""
+            val carrierDisplayName = details.callerDisplayName ?: ""
+
+            // Resolve contact name from the phone's contacts provider
+            val contactName = withContext(Dispatchers.IO) {
+                lookupContactName(phoneNumber)
+            }
+            val displayName = contactName ?: carrierDisplayName.ifBlank { null }
+            Log.d(TAG, "Resolved caller: name=$displayName, number=$phoneNumber")
 
             when (telecomCall.state) {
                 Call.STATE_RINGING -> {
                     // Incoming call from the network
                     val callId = CryptoUtils.generateId("call")
                     telecomCallToId[telecomCall.hashCode()] = callId
-                    callEngine.onIncomingCall(
-                        callId = callId,
-                        phoneNumber = phoneNumber,
-                        displayName = displayName.ifBlank { null },
-                        deviceId = deviceId,
-                        subscriptionId = 0
-                    )
+                    withContext(Dispatchers.IO) {
+                        callEngine.onIncomingCall(
+                            callId = callId,
+                            phoneNumber = phoneNumber,
+                            displayName = displayName,
+                            deviceId = deviceId,
+                            subscriptionId = 0
+                        )
+                    }
+                    // Launch our custom incoming call UI
+                    withContext(Dispatchers.Main) {
+                        if (!launchedIncomingFor.contains(telecomCall.hashCode())) {
+                            launchedIncomingFor.add(telecomCall.hashCode())
+                            callUiDelegate.showIncomingCall(
+                                applicationContext,
+                                callId,
+                                phoneNumber,
+                                displayName
+                            )
+                        }
+                    }
                 }
                 Call.STATE_DIALING, Call.STATE_CONNECTING -> {
                     // Outbound call — try to match to an existing CallEngine record
-                    // (created by makeCall() or API). If no match, create a new tracked record.
                     if (!telecomCallToId.containsKey(telecomCall.hashCode())) {
-                        val existing = callEngine.findRecentOutboundCall(phoneNumber)
+                        val existing = withContext(Dispatchers.IO) {
+                            callEngine.findRecentOutboundCall(phoneNumber)
+                        }
                         if (existing != null) {
                             Log.d(TAG, "Matched outbound call to existing record: ${existing.id}")
                             telecomCallToId[telecomCall.hashCode()] = existing.id
@@ -94,7 +131,7 @@ class OpenCellInCallService : InCallService() {
                 }
             }
 
-            // Register state callback
+            // Register state callback — must be on main/looper thread
             telecomCall.registerCallback(object : Call.Callback() {
                 override fun onStateChanged(tc: Call, state: Int) {
                     handleStateChange(tc, state, deviceId)
@@ -119,14 +156,64 @@ class OpenCellInCallService : InCallService() {
 
     private fun handleStateChange(telecomCall: Call, state: Int, deviceId: String) {
         val callId = telecomCallToId[telecomCall.hashCode()] ?: return
+        val details = telecomCall.details
+        val phoneNumber = details.handle?.schemeSpecificPart ?: ""
+        val carrierDisplayName = details.callerDisplayName ?: ""
+
         serviceScope.launch {
             when (state) {
-                Call.STATE_ACTIVE -> callEngine.answerCall(callId)
+                Call.STATE_ACTIVE -> {
+                    callEngine.answerCall(callId)
+                    // Launch active call UI if we didn't come from our IncomingCallActivity
+                    // (e.g. user answered from system notification)
+                    withContext(Dispatchers.Main) {
+                        val contactName = withContext(Dispatchers.IO) {
+                            lookupContactName(phoneNumber)
+                        }
+                        val name = contactName ?: carrierDisplayName.ifBlank { null }
+                        callUiDelegate.showActiveCall(
+                            applicationContext,
+                            callId,
+                            phoneNumber,
+                            name
+                        )
+                    }
+                }
                 Call.STATE_HOLDING -> callEngine.holdCall(callId)
-                Call.STATE_DISCONNECTED -> callEngine.hangupCall(callId)
-                Call.STATE_DISCONNECTING -> callEngine.hangupCall(callId)
+                Call.STATE_DISCONNECTED, Call.STATE_DISCONNECTING -> {
+                    callEngine.hangupCall(callId)
+                    // Clear tracking state
+                    launchedIncomingFor.remove(telecomCall.hashCode())
+                    telecomCallToId.remove(telecomCall.hashCode())
+                }
                 else -> { /* no action for other states */ }
             }
+        }
+    }
+
+    /**
+     * Look up a contact name from the phone's contacts provider.
+     */
+    private fun lookupContactName(phoneNumber: String): String? {
+        if (phoneNumber.isBlank()) return null
+        val uri = Uri.withAppendedPath(
+            ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+            Uri.encode(phoneNumber)
+        )
+        var cursor: Cursor? = null
+        return try {
+            cursor = contentResolver.query(
+                uri,
+                arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
+                null, null, null
+            )
+            if (cursor != null && cursor.moveToFirst()) {
+                cursor.getString(0)
+            } else null
+        } catch (_: Exception) {
+            null
+        } finally {
+            cursor?.close()
         }
     }
 

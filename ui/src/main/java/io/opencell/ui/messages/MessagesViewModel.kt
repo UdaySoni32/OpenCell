@@ -47,6 +47,7 @@ class MessagesViewModel @Inject constructor(
     val uiState: StateFlow<MessagesUiState> = _uiState.asStateFlow()
 
     init {
+        importSystemSmsHistory()
         loadConversations()
     }
 
@@ -80,6 +81,21 @@ class MessagesViewModel @Inject constructor(
 
     fun onSearchQueryChange(query: String) {
         _uiState.value = _uiState.value.copy(searchQuery = query)
+    }
+
+    /**
+     * Import SMS from the system SMS provider so the messages tab shows
+     * history from before OpenCell was installed.
+     */
+    private fun importSystemSmsHistory() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    val deviceId = deviceEngine.getLocalDeviceId()
+                    messagingEngine.importSystemSmsHistory(deviceId)
+                } catch (_: Exception) { }
+            }
+        }
     }
 
     fun clearError() {

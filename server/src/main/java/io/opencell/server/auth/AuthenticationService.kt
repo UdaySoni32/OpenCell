@@ -10,6 +10,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
+import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -21,6 +22,10 @@ class AuthenticationService @Inject constructor(
 ) {
     private val keyCache = ConcurrentHashMap<String, CachedApiKey>()
     private val rateLimitTracker = ConcurrentHashMap<String, MutableList<Long>>()
+
+    companion object {
+        private const val TAG = "AuthService"
+    }
 
     data class CachedApiKey(val id: String, val projectId: String, val scopes: List<String>, val isActive: Boolean, val maxRatePerMinute: Int = 60)
     data class AuthResult(val authenticated: Boolean, val apiKeyId: String? = null, val projectId: String? = null, val scopes: List<String> = emptyList(), val error: String? = null)
@@ -118,6 +123,35 @@ class AuthenticationService @Inject constructor(
 
     suspend fun getRecentAuditLogs(limit: Int = 100): List<AuditLogEntity> {
         return auditLogDao.getRecentEntries(limit).first()
+    }
+
+    /**
+     * Creates a default API key if none exist for the default project.
+     * Returns the raw key string, or null if a key already existed.
+     */
+    suspend fun createDefaultApiKeyIfNeeded(): String? {
+        val existingKeys = apiKeyDao.getActiveKeysForProject("default").first()
+        if (existingKeys.isNotEmpty()) return null
+
+        // Ensure the default project exists (required by foreign key constraint)
+        val existingProject = apiKeyDao.getProject("default")
+        if (existingProject == null) {
+            apiKeyDao.upsertProject(
+                io.opencell.core.database.entity.ProjectEntity(
+                    id = "default",
+                    name = "Default Project",
+                    description = "Auto-created default project"
+                )
+            )
+        }
+
+        val (rawKey, _) = createApiKey(
+            projectId = "default",
+            name = "Default API Key",
+            scopes = listOf("*")
+        )
+        Log.i(TAG, "Default API key created: $rawKey")
+        return rawKey
     }
 
     private fun parseScopes(scopesJson: String): List<String> {

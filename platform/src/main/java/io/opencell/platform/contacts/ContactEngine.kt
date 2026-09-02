@@ -45,6 +45,47 @@ class ContactEngine @Inject constructor(
         return contacts
     }
 
+    fun getStarredContacts(limit: Int = 20): List<Contact> {
+        val contacts = mutableListOf<Contact>()
+        val contactMap = mutableMapOf<String, ContactBuilder>()
+
+        context.contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(
+                ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY,
+                ContactsContract.CommonDataKinds.Phone.NUMBER,
+                ContactsContract.CommonDataKinds.Phone.PHOTO_URI,
+                ContactsContract.CommonDataKinds.Phone.TYPE
+            ),
+            "${ContactsContract.Contacts.STARRED} = 1", null,
+            "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY} ASC"
+        )?.use { cursor ->
+            val idIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
+            val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY)
+            val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            val photoIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
+            val typeIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.TYPE)
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idIndex).toString()
+                val name = cursor.getString(nameIndex) ?: "Unknown"
+                val number = cursor.getString(numberIndex) ?: continue
+                val photo = cursor.getString(photoIndex)
+                val type = cursor.getInt(typeIndex)
+
+                val builder = contactMap.getOrPut(id) { ContactBuilder(id, name, photo) }
+                builder.phoneNumbers.add(PhoneNumber(number = number, type = mapPhoneType(type)))
+            }
+
+            contactMap.values.take(limit).forEach { builder ->
+                contacts.add(Contact(id = builder.id, displayName = builder.name,
+                    photoUri = builder.photoUri, phoneNumbers = builder.phoneNumbers))
+            }
+        }
+        return contacts
+    }
+
     fun getAllContacts(limit: Int = 500): List<Contact> {
         val contacts = mutableListOf<Contact>()
         val contactMap = mutableMapOf<String, ContactBuilder>()

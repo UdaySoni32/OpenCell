@@ -16,7 +16,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import dagger.hilt.android.EntryPointAccessors
+import io.opencell.platform.di.PlatformEntryPoint
 import io.opencell.ui.TestingDashboard
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Navigation routes for the OpenCell app.
@@ -34,14 +38,15 @@ object Routes {
     const val SETTINGS_CAPABILITIES = "settings/capabilities"
     const val INCOMING_CALL = "incoming-call/{callId}"
     const val TESTING_DASHBOARD = "testing-dashboard"
+    const val API_DOCS = "api-docs"
 
     fun conversation(threadId: String) = "conversation/$threadId"
     fun incomingCall(callId: String) = "incoming-call/$callId"
 }
 
 /**
- * Bottom navigation items — 3 tabs like the new Google Phone app.
- * Home = Favorites + Recents (merged), Keypad, Messages.
+ * Bottom navigation items — 4 tabs.
+ * Home = Favorites + Recents, Keypad, Messages, Contacts.
  */
 enum class BottomNavItem(
     val route: String,
@@ -50,7 +55,8 @@ enum class BottomNavItem(
 ) {
     HOME(Routes.HOME, "Home", Icons.Default.Home),
     KEYPAD(Routes.KEYPAD, "Keypad", Icons.Default.Dialpad),
-    MESSAGES(Routes.MESSAGES, "Messages", Icons.Default.ChatBubble)
+    MESSAGES(Routes.MESSAGES, "Messages", Icons.Default.ChatBubble),
+    CONTACTS(Routes.CONTACTS, "Contacts", Icons.Default.Contacts)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -108,6 +114,8 @@ fun MainNavigation() {
             }
         }
     ) { paddingValues ->
+        val scope = rememberCoroutineScope()
+
         NavHost(
             navController = navController,
             startDestination = Routes.HOME,
@@ -116,9 +124,9 @@ fun MainNavigation() {
             composable(Routes.HOME) {
                 io.opencell.ui.home.HomeScreen(
                     onContactClick = { number ->
-                        val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number"))
-                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        navController.context.startActivity(intent)
+                        scope.launch {
+                            launchCallUI(navController.context, number)
+                        }
                     },
                     onKeypadClick = {
                         navController.navigate(Routes.KEYPAD) {
@@ -126,9 +134,9 @@ fun MainNavigation() {
                         }
                     },
                     onRecentCallClick = { number ->
-                        val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number"))
-                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        navController.context.startActivity(intent)
+                        scope.launch {
+                            launchCallUI(navController.context, number)
+                        }
                     },
                     onSettingsClick = {
                         navController.navigate(Routes.SETTINGS)
@@ -163,12 +171,14 @@ fun MainNavigation() {
                 )
             }
             composable(Routes.CONTACTS) {
-                val context = LocalContext.current
                 io.opencell.ui.contacts.ContactsScreen(
                     onContactClick = { number ->
-                        val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number"))
-                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        context.startActivity(intent)
+                        scope.launch {
+                            launchCallUI(navController.context, number)
+                        }
+                    },
+                    onSmsClick = { number, name ->
+                        navController.navigate(Routes.COMPOSE_MESSAGE)
                     }
                 )
             }
@@ -179,6 +189,7 @@ fun MainNavigation() {
                     onDeviceClick = { navController.navigate(Routes.SETTINGS_DEVICE) },
                     onCapabilitiesClick = { navController.navigate(Routes.SETTINGS_CAPABILITIES) },
                     onDeveloperClick = { navController.navigate(Routes.TESTING_DASHBOARD) },
+                    onApiDocsClick = { navController.navigate(Routes.API_DOCS) },
                     onRoleSetupClick = {
                         try {
                             val intent = Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
@@ -210,6 +221,85 @@ fun MainNavigation() {
                     onBack = { navController.popBackStack() }
                 )
             }
+            composable(Routes.API_DOCS) {
+                io.opencell.ui.settings.ApiDocsScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
         }
+    }
+}
+
+/**
+ * Initiate a call through CallEngine and launch ActiveCallActivity.
+ * This creates the call record in the DB, emits events, and launches
+ * the system telephony intent. ActiveCallActivity shows on top.
+ */
+suspend fun launchCallUI(context: android.content.Context, phoneNumber: String) {
+    try {
+        val entryPoint = EntryPointAccessors.fromApplication(
+            context.applicationContext, PlatformEntryPoint::class.java
+        )
+        val callEngine = entryPoint.callEngine()
+        val deviceEngine = entryPoint.deviceEngine()
+        val device = deviceEngine.getOrCreateLocalDevice()
+        
+        Log.i("Navigation", "Initiating real call to $phoneNumber")
+        
+        // makeCall() places the REAL call via ACTION_CALL intent + creates DB record
+        val result = callEngine.makeCall(
+            phoneNumber = phoneNumber,
+            deviceId = device.id
+        )
+        
+        val callId = result.getOrNull()?.id ?: "outgoing_${System.currentTimeMillis()}"
+        
+        // Lookup contact name using ContentResolver directly (avoid app module dependency)
+        val displayName = try {
+            val cursor = context.contentResolver.query(
+                android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),
+                "${android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER} = ?",
+                arrayOf(phoneNumber),
+                null
+            )
+            cursor?.use {
+                if (it.moveToFirst()) it.getString(0) else phoneNumber
+            } ?: phoneNumber
+        } catch (e: Exception) { phoneNumber }
+        
+        Log.i("Navigation", "Call initiated: callId=$callId, result=${result.isSuccess}")
+        
+        // Small delay so the system telephony intent fires first
+        delay(500)
+        
+        // Launch our custom ActiveCallActivity as a companion UI
+        // Use Intent to avoid direct dependency on app module
+        val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$phoneNumber"))
+        callIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        
+        // Fire the call intent again in case the first one was consumed by system
+        try { context.startActivity(callIntent) } catch (_: Exception) {}
+        
+        // Launch ActiveCallActivity via reflection to avoid circular dependency
+        try {
+            val activityClass = Class.forName("io.opencell.app.call.ActiveCallActivity")
+            val launchMethod = activityClass.getMethod(
+                "launch",
+                android.content.Context::class.java,
+                String::class.java,
+                String::class.java,
+                String::class.java
+            )
+            launchMethod.invoke(null, context, callId, phoneNumber, displayName)
+        } catch (e: Exception) {
+            Log.w("Navigation", "Could not launch ActiveCallActivity via reflection", e)
+        }
+    } catch (e: Exception) {
+        Log.w("Navigation", "Failed to launch call via CallEngine, falling back to system dialer", e)
+        // Fallback: open system dialer
+        val fallback = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phoneNumber"))
+        fallback.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        context.startActivity(fallback)
     }
 }

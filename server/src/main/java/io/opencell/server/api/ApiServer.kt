@@ -1,7 +1,9 @@
 package io.opencell.server.api
 
 import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.*
+import io.ktor.serialization.jackson.*
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
@@ -21,11 +23,8 @@ import io.opencell.server.auth.AuthenticationService
 import io.opencell.server.api.routes.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import com.fasterxml.jackson.databind.node.ObjectNode
+import com.fasterxml.jackson.databind.node.TextNode
 import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
 
@@ -61,12 +60,10 @@ class ApiServer(
 
     private fun Application.configureSerialization() {
         install(ContentNegotiation) {
-            json(Json {
-                prettyPrint = false
-                isLenient = true
-                ignoreUnknownKeys = true
-                encodeDefaults = true
-            })
+            jackson {
+                configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
+                configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
+            }
         }
     }
 
@@ -146,7 +143,7 @@ class ApiServer(
                 call.respond(mapOf(
                     "status" to "ok",
                     "version" to "0.1.0-mvp",
-                    "timestamp" to System.currentTimeMillis()
+                    "timestamp" to System.currentTimeMillis().toString()
                 ))
             }
 
@@ -223,11 +220,13 @@ class ApiServer(
                 wsClients[sessionId] = this
                 try {
                     // Send connected confirmation
-                    send(Frame.Text(buildJsonObject {
-                        put("type", JsonPrimitive("connected"))
-                        put("session_id", JsonPrimitive(sessionId))
-                        put("message", JsonPrimitive("Connected to OpenCell event stream"))
-                    }.toString()))
+                    val objectMapper = jacksonObjectMapper()
+                    val confirmMsg = objectMapper.createObjectNode().apply {
+                        put("type", "connected")
+                        put("session_id", sessionId)
+                        put("message", "Connected to OpenCell event stream")
+                    }
+                    send(Frame.Text(objectMapper.writeValueAsString(confirmMsg)))
 
                     // Keep connection alive and listen for client messages
                     for (frame in incoming) {
@@ -250,20 +249,25 @@ class ApiServer(
     suspend fun broadcastEvent(eventName: String, deviceId: String, data: Map<String, Any>) {
         if (wsClients.isEmpty()) return
 
-        val payload = buildJsonObject {
-            put("type", JsonPrimitive("event"))
-            put("event", JsonPrimitive(eventName))
-            put("device_id", JsonPrimitive(deviceId))
-            put("timestamp", JsonPrimitive(System.currentTimeMillis()))
+        val objectMapper = jacksonObjectMapper()
+        val payloadNode = objectMapper.createObjectNode().apply {
+            put("type", "event")
+            put("event", eventName)
+            put("device_id", deviceId)
+            put("timestamp", System.currentTimeMillis())
             data.forEach { (k, v) ->
-                put(k, when (v) {
-                    is String -> JsonPrimitive(v)
-                    is Number -> JsonPrimitive(v)
-                    is Boolean -> JsonPrimitive(v)
-                    else -> JsonPrimitive(v.toString())
-                })
+                when (v) {
+                    is String -> put(k, v)
+                    is Int -> put(k, v)
+                    is Long -> put(k, v)
+                    is Double -> put(k, v)
+                    is Float -> put(k, v.toDouble())
+                    is Boolean -> put(k, v)
+                    else -> put(k, v.toString())
+                }
             }
-        }.toString()
+        }
+        val payload = objectMapper.writeValueAsString(payloadNode)
 
         val frame = Frame.Text(payload)
         val deadClients = mutableListOf<String>()

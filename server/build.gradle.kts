@@ -40,7 +40,8 @@ dependencies {
     implementation(libs.ktor.server.auth.jwt) {
         exclude(group = "com.google.guava", module = "guava")
     }
-    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.serialization.jackson)
+    implementation(libs.jackson.databind)
 
     // Serialization
     implementation(libs.kotlinx.serialization.json)
