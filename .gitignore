@@ -1,0 +1,15 @@
+*.iml
+.gradle
+/local.properties
+.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.kotlin
+
+# Local test artifacts (screenshots, dumps) — never commit
+/*.png
+/*.xml
