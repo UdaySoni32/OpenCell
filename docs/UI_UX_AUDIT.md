@@ -29,6 +29,12 @@ _Created while fixing the first-pass issues; kept as the project's design log._
 7. **Settings About card lied** — "Version 1.0.0 / API 37" were hard-coded strings.
    → Uses `BuildConfig.VERSION_NAME` and live `Build.VERSION` values.
 
+8. **Crowded 6-item bottom bar & dialer as a separate section** — the nav bar squeezed six
+   tabs, and dialing required switching to a dedicated Phone section.
+   → Navigation slimmed to 5 tabs (Recents / Messages / Contacts / Settings / Dev); **Recents is
+   now the home screen** and the dialer is a **"Dial" FAB** on it that opens a bottom-sheet
+   dialpad. Redial and contact-call buttons dial directly instead of switching tabs.
+
 ### Known issues (open, tracked)
 
 - The "mock telephony" toggle in Dev prefs is not read by `CallEngine` (no live-call simulation

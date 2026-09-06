@@ -21,6 +21,18 @@ class RecentsViewModel(
     private val _selectedFilter = MutableStateFlow<CallType?>(null) // null = ALL
     val selectedFilter: StateFlow<CallType?> = _selectedFilter.asStateFlow()
 
+    private val _isDialerOpen = MutableStateFlow(false)
+    val isDialerOpen: StateFlow<Boolean> = _isDialerOpen.asStateFlow()
+
+    /** Opens the in-sheet dialpad on the Recents home screen. */
+    fun openDialer() {
+        _isDialerOpen.value = true
+    }
+
+    fun closeDialer() {
+        _isDialerOpen.value = false
+    }
+
     val calls: StateFlow<List<CallRecord>> = combine(
         callRepository.getAllCalls(),
         _selectedFilter

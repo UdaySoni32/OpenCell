@@ -3,6 +3,7 @@ package com.example.opencell.ui.recents
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,18 +23,23 @@ import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -47,29 +53,43 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.opencell.domain.model.CallRecord
 import com.example.opencell.domain.model.CallType
+import com.example.opencell.ui.phone.DialPadGrid
+import com.example.opencell.ui.phone.PhoneViewModel
 import com.example.opencell.ui.theme.OpenCellTheme
 import com.example.opencell.ui.theme.successColor
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Home screen: recent calls with filters. The dialer is a feature here — a
+ * "Dial" FAB opens a bottom-sheet dialpad — rather than a separate tab.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecentsScreen(
     viewModel: RecentsViewModel,
+    phoneViewModel: PhoneViewModel,
     onRedialClick: (String) -> Unit = {},
+    onMessageClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val calls by viewModel.calls.collectAsStateWithLifecycle()
     val selectedFilter by viewModel.selectedFilter.collectAsStateWithLifecycle()
+    val isDialerOpen by viewModel.isDialerOpen.collectAsStateWithLifecycle()
 
     RecentsScreenContent(
         calls = calls,
         selectedFilter = selectedFilter,
+        isDialerOpen = isDialerOpen,
         onFilterSelect = viewModel::setFilter,
         onDeleteCall = viewModel::deleteCall,
         onClearAll = viewModel::clearAllCalls,
+        onOpenDialer = viewModel::openDialer,
+        onCloseDialer = viewModel::closeDialer,
+        phoneViewModel = phoneViewModel,
         onRedialClick = onRedialClick,
+        onMessageClick = onMessageClick,
         modifier = modifier
     )
 }
@@ -79,10 +99,15 @@ fun RecentsScreen(
 fun RecentsScreenContent(
     calls: List<CallRecord>,
     selectedFilter: CallType?,
+    isDialerOpen: Boolean,
     onFilterSelect: (CallType?) -> Unit,
     onDeleteCall: (CallRecord) -> Unit,
     onClearAll: () -> Unit,
+    onOpenDialer: () -> Unit,
+    onCloseDialer: () -> Unit,
+    phoneViewModel: PhoneViewModel?,
     onRedialClick: (String) -> Unit,
+    onMessageClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -97,7 +122,7 @@ fun RecentsScreenContent(
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(end = 8.dp)
                         )
-                        Text("Call History")
+                        Text("Recents")
                     }
                 },
                 actions = {
@@ -111,6 +136,16 @@ fun RecentsScreenContent(
                         }
                     }
                 }
+            )
+        },
+        floatingActionButton = {
+            // Dialer: a feature on the home screen, not a tab.
+            ExtendedFloatingActionButton(
+                onClick = onOpenDialer,
+                icon = { Icon(Icons.Default.Dialpad, contentDescription = null) },
+                text = { Text("Dial") },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
             )
         }
     ) { padding ->
@@ -180,7 +215,7 @@ fun RecentsScreenContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Call history records will appear here",
+                            text = "Tap Dial to start a call",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -189,7 +224,9 @@ fun RecentsScreenContent(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    // Keep the last rows tappable above the Dial FAB.
+                    contentPadding = PaddingValues(bottom = 96.dp)
                 ) {
                     items(calls, key = { it.id }) { call ->
                         RecentCallItemCard(
@@ -198,6 +235,78 @@ fun RecentsScreenContent(
                             onDelete = { onDeleteCall(call) }
                         )
                     }
+                }
+            }
+        }
+    }
+
+    // Dialer bottom sheet — the dialpad is a feature of the home screen.
+    if (isDialerOpen && phoneViewModel != null) {
+        DialerBottomSheet(
+            phoneViewModel = phoneViewModel,
+            onDismiss = onCloseDialer
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DialerBottomSheet(
+    phoneViewModel: PhoneViewModel,
+    onDismiss: () -> Unit
+) {
+    val dialedNumber by phoneViewModel.dialedNumber.collectAsStateWithLifecycle()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = dialedNumber.ifEmpty { "Enter Number" },
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = if (dialedNumber.isEmpty()) MaterialTheme.colorScheme.outline
+                else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            DialPadGrid(
+                onDigitClick = phoneViewModel::onDigitClick,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FloatingActionButton(
+                    onClick = {
+                        phoneViewModel.onCallClick()
+                        onDismiss()
+                    },
+                    containerColor = successColor(),
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    modifier = Modifier.size(64.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Call,
+                        contentDescription = "Call",
+                        modifier = Modifier.size(32.dp)
+                    )
                 }
             }
         }
@@ -337,10 +446,15 @@ fun RecentsScreenPreview() {
                 )
             ),
             selectedFilter = null,
+            isDialerOpen = false,
             onFilterSelect = {},
             onDeleteCall = {},
             onClearAll = {},
-            onRedialClick = {}
+            onOpenDialer = {},
+            onCloseDialer = {},
+            phoneViewModel = null,
+            onRedialClick = {},
+            onMessageClick = {}
         )
     }
 }

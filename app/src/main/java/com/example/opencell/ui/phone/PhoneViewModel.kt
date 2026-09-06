@@ -79,6 +79,15 @@ class PhoneViewModel(
     }
 
     /**
+     * Places a call to an explicit number (redial from Recents, call button
+     * in Contacts) without going through the dialpad state.
+     */
+    fun callNumber(number: String) {
+        if (number.isBlank()) return
+        callEngine.initiateCall(number)
+    }
+
+    /**
      * Replaces the dial pad number (used when handling external ACTION_DIAL /
      * ACTION_VIEW tel: intents routed to OpenCell as the default dialer).
      */

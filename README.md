@@ -11,10 +11,13 @@ from your computer. Think of it as a dialer with an API.
 
 ## Features
 
+- **Recents-first home** — fresh launches open into call history; the dialer is a Dial FAB
+  with a bottom-sheet dialpad, not a separate tab (5-item nav bar, no clutter)
+- **One-tap redial** — the call button on any history entry dials immediately
 - **Custom in-call UI** — mute, speaker, hold, DTMF keypad; no handoff to the OEM/Google dialer
 - **No handoff dialing** — qualifies for the Android `DIALER` role and binds its own
   `InCallService` (`android.telecom.IN_CALL_SERVICE_UI`)
-- **Dialer, Messages, Contacts, Recents** — full Material 3, light/dark/dynamic color
+- **Messages, Contacts, Settings, Dev tools** — full Material 3, light/dark/dynamic color
 - **Local REST gateway** — Ktor server on `127.0.0.1:8080`, API-key auth + scopes
 - **WebSocket events** — live call/message events on `/v1/events`
 - **Dev screen** — key management, webhooks, live request logs, mock telephony toggle

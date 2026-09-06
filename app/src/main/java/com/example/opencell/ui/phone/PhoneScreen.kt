@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
@@ -30,6 +31,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -67,6 +69,7 @@ private const val MAX_DIALPAD_DIGITS = 20
 @Composable
 fun PhoneScreen(
     viewModel: PhoneViewModel,
+    onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -100,6 +103,7 @@ fun PhoneScreen(
         isModemAvailable = isModemAvailable,
         isDefaultDialer = isDefaultDialer,
         snackbarHostState = snackbarHostState,
+        onBack = onBack,
         onRequestSetDefaultDialer = {
             val intent = viewModel.getSetDefaultDialerIntent(context)
             roleLauncher.launch(intent)
@@ -121,6 +125,7 @@ fun PhoneScreenContent(
     isModemAvailable: Boolean,
     isDefaultDialer: Boolean = true,
     snackbarHostState: SnackbarHostState,
+    onBack: (() -> Unit)? = null,
     onRequestSetDefaultDialer: () -> Unit = {},
     onDigitClick: (String) -> Unit,
     onBackspaceClick: () -> Unit,
@@ -142,6 +147,16 @@ fun PhoneScreenContent(
                             modifier = Modifier.padding(end = 8.dp)
                         )
                         Text("Phone & Dialer")
+                    }
+                },
+                navigationIcon = {
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
                     }
                 }
             )
