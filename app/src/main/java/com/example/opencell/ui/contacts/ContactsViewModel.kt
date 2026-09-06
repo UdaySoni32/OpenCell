@@ -3,6 +3,7 @@ package com.example.opencell.ui.contacts
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.opencell.domain.model.Contact
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +19,7 @@ class ContactsViewModel : ViewModel() {
     private val _isAddContactOpen = MutableStateFlow(false)
     val isAddContactOpen: StateFlow<Boolean> = _isAddContactOpen.asStateFlow()
 
+    // Backed by Room via ContactStore: persists across restarts.
     private val _contactList = ContactStore.contacts
 
     val contacts: StateFlow<List<Contact>> = combine(
@@ -53,11 +55,15 @@ class ContactsViewModel : ViewModel() {
 
     fun addContact(name: String, phone: String, carrier: String?) {
         if (name.isBlank() || phone.isBlank()) return
-        ContactStore.add(name, phone, carrier)
-        _isAddContactOpen.value = false
+        viewModelScope.launch {
+            ContactStore.add(name, phone, carrier)
+            _isAddContactOpen.value = false
+        }
     }
 
     fun deleteContact(contact: Contact) {
-        ContactStore.delete(contact.id)
+        viewModelScope.launch {
+            ContactStore.delete(contact.id)
+        }
     }
 }

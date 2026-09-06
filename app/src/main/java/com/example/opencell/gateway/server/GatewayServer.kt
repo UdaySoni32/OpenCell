@@ -349,9 +349,9 @@ class GatewayServer(
                 // Contacts API
                 get("/v1/contacts") {
                     if (authenticateAndAuthorize(call, requiredScope = ApiKeyRecord.SCOPE_CONTACTS_READ) != null) {
-                        // Shared store: a throwaway ContactsViewModel here never
-                        // loaded its data outside composition (always []).
-                        call.respond(ContactStore.contacts.value)
+                        // Room-backed shared store (waits briefly for first load
+                        // on cold start so early requests aren't empty).
+                        call.respond(ContactStore.contactsSnapshot())
                     }
                 }
 
