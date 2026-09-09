@@ -9,7 +9,11 @@
 .cxx
 local.properties
 .kotlin
+.agent/
+.artifacts/
+*.apk
+*.aar
 
-# Local test artifacts (screenshots, dumps) — never commit
+# Local test artifacts (screenshots, dumps in root) — never commit
 /*.png
 /*.xml

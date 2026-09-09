@@ -1,18 +1,12 @@
 package com.example.opencell.telecom
 
-import android.R
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.content.Context
-import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.telecom.Call
 import android.telecom.InCallService
-import androidx.core.app.NotificationCompat
-import com.example.opencell.ui.incall.InCallActivity
+import com.example.opencell.data.repository.ContactLookup
+import com.example.opencell.domain.model.CallSession
+import com.example.opencell.domain.model.CallState
 
 class OpenCellInCallService : InCallService() {
 
@@ -51,65 +45,28 @@ class OpenCellInCallService : InCallService() {
     }
 
     private fun showInCallNotificationAndLaunchUi(call: Call) {
-        createNotificationChannel()
+        CallNotificationManager.createNotificationChannel(this)
 
-        val activityIntent = Intent(this, InCallActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            activityIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val number = call.details?.handle?.schemeSpecificPart ?: "Unknown"
-        @Suppress("DEPRECATION")
+        val handle = call.details?.handle?.schemeSpecificPart ?: "Unknown"
+        val resolvedName = ContactLookup.resolveContactName(this, handle)
         val isRinging = call.state == Call.STATE_RINGING
 
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_menu_call)
-            .setContentTitle(if (isRinging) "Incoming Call" else "Active Call")
-            .setContentText(number)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setFullScreenIntent(pendingIntent, true)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .build()
+        val session = CallSession(
+            phoneNumber = handle,
+            contactName = resolvedName,
+            state = if (isRinging) CallState.RINGING else CallState.ACTIVE,
+            isIncoming = isRinging
+        )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
-            )
+        if (isRinging) {
+            CallNotificationManager.showIncomingCallNotification(this, session)
         } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
-
-        try {
-            startActivity(activityIntent)
-        } catch (_: Exception) {
-        }
-    }
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "In-Call Services",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "OpenCell Active & Incoming Call Service Channel"
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            }
-            val manager = getSystemService(NOTIFICATION_SERVICE) as? NotificationManager
-            manager?.createNotificationChannel(channel)
+            CallNotificationManager.showActiveCallNotification(this, session)
         }
     }
 
     private fun stopForegroundNotification() {
+        CallNotificationManager.cancelNotification(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
@@ -119,9 +76,6 @@ class OpenCellInCallService : InCallService() {
     }
 
     companion object {
-        const val CHANNEL_ID = "opencell_incall_channel"
-        const val NOTIFICATION_ID = 2001
-
         @Volatile
         var activeServiceInstance: OpenCellInCallService? = null
             private set

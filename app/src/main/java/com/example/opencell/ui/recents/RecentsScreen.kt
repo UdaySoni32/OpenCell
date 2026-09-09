@@ -325,17 +325,17 @@ fun RecentCallItemCard(
     val (icon, tintColor, labelText) = when (call.callType) {
         CallType.INCOMING -> Triple(
             Icons.AutoMirrored.Filled.CallReceived,
-            successColor(),
+            Color(0xFF2E7D32),
             "Incoming"
         )
         CallType.OUTGOING -> Triple(
             Icons.AutoMirrored.Filled.CallMade,
-            MaterialTheme.colorScheme.primary,
+            Color(0xFF1976D2),
             "Outgoing"
         )
         CallType.MISSED -> Triple(
             Icons.AutoMirrored.Filled.CallMissed,
-            MaterialTheme.colorScheme.error,
+            Color(0xFFD32F2F),
             "Missed"
         )
     }
@@ -371,13 +371,23 @@ fun RecentCallItemCard(
             Spacer(modifier = Modifier.width(16.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = call.contactName ?: call.phoneNumber,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = labelText,
+                        tint = tintColor,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(end = 4.dp)
+                    )
+                    Text(
+                        text = call.contactName ?: call.phoneNumber,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 if (call.contactName != null) {
                     Text(
                         text = call.phoneNumber,

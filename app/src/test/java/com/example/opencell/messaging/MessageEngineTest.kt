@@ -3,6 +3,7 @@ package com.example.opencell.messaging
 import android.app.PendingIntent
 import com.example.opencell.data.repository.FakeMessageRecordDao
 import com.example.opencell.data.repository.MessageRepositoryImpl
+import com.example.opencell.domain.model.MessageRecord
 import com.example.opencell.domain.model.MessageStatus
 import com.example.opencell.telecom.TestContext
 import kotlinx.coroutines.CoroutineScope
@@ -73,5 +74,21 @@ class MessageEngineTest {
         assertEquals("555-0199", messages[0].address)
         assertEquals("Test cell towers", messages[0].body)
         assertEquals(MessageStatus.DELIVERED, messages[0].status)
+    }
+
+    @Test
+    fun onIncomingMessageReceived_updatesStatusMessage() = runTest(testDispatcher) {
+        val record = MessageRecord(
+            id = 101L,
+            address = "555-0123",
+            body = "Hello from incoming SMS",
+            timestamp = System.currentTimeMillis(),
+            isIncoming = true,
+            status = MessageStatus.RECEIVED
+        )
+
+        messageEngine.onIncomingMessageReceived(record)
+
+        assertEquals("Incoming SMS received from 555-0123", messageEngine.statusMessage.value)
     }
 }

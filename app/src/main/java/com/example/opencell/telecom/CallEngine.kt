@@ -5,6 +5,7 @@ import android.telecom.Call
 import android.telecom.InCallService
 import com.example.opencell.OpenCellApplication
 import com.example.opencell.data.repository.CallRepository
+import com.example.opencell.data.repository.ContactLookup
 import com.example.opencell.domain.model.CallRecord
 import com.example.opencell.domain.model.CallSession
 import com.example.opencell.domain.model.CallState
@@ -58,10 +59,14 @@ class CallEngine(
         refreshModemStatus()
         val hasPermission = telecomAdapter.hasCallPermission()
         val hasModem = telecomAdapter.isTelephonyCapable()
+        val appContext = OpenCellApplication.instanceOrNull
+
+        val resolvedName = contactName?.ifBlank { null }
+            ?: ContactLookup.resolveContactName(appContext, sanitizedNumber)
 
         val session = CallSession(
             phoneNumber = sanitizedNumber,
-            contactName = contactName,
+            contactName = resolvedName,
             state = CallState.DIALING,
             isIncoming = false,
             isSimulated = false
@@ -69,6 +74,10 @@ class CallEngine(
         _activeCallSession.value = session
 
         launchInCallUi()
+
+        if (appContext != null) {
+            CallNotificationManager.showActiveCallNotification(appContext, session)
+        }
 
         if (hasModem && hasPermission) {
             val success = telecomAdapter.placeCall(sanitizedNumber)
@@ -93,20 +102,23 @@ class CallEngine(
             persistEndedCall(
                 CallSession(
                     phoneNumber = sanitizedNumber,
-                    contactName = contactName,
+                    contactName = resolvedName,
                     state = CallState.FAILED,
                     isIncoming = false,
                     isSimulated = false,
                     disconnectReason = error
                 )
             )
+            if (appContext != null) {
+                CallNotificationManager.cancelNotification(appContext)
+            }
             return
         }
 
         // Simulation Fallback for emulators/dev mode when telecom stack is unavailable
         val simSession = session.copy(isSimulated = true)
         _activeCallSession.value = simSession
-        _statusMessage.value = "Simulated call started for $sanitizedNumber (no hardware modem)"
+        _statusMessage.value = "Simulated call started for $sanitizedNumber"
 
         externalScope.launch {
             delay(1500)
@@ -118,14 +130,49 @@ class CallEngine(
                 )
                 _activeCallSession.value = activeSession
                 startDurationTimer()
+                if (appContext != null) {
+                    CallNotificationManager.showActiveCallNotification(appContext, activeSession)
+                }
             }
         }
     }
 
     /**
-     * Brings up OpenCell's own InCallActivity whenever a call is initiated so the
-     * call is never handed off to the OEM/default phone app's UI. No-op when the
-     * application instance is unavailable (e.g. JVM unit tests).
+     * Simulates an incoming call for instant testing on emulators or dev environments.
+     */
+    fun simulateIncomingCall(phoneNumber: String = "+15551234567", callerName: String? = null) {
+        val sanitizedNumber = phoneNumber.ifBlank { "+15551234567" }.trim()
+        val appContext = OpenCellApplication.instanceOrNull
+
+        val resolvedName = callerName?.ifBlank { null }
+            ?: ContactLookup.resolveContactName(appContext, sanitizedNumber)
+
+        val session = CallSession(
+            phoneNumber = sanitizedNumber,
+            contactName = resolvedName,
+            state = CallState.RINGING,
+            isIncoming = true,
+            isSimulated = true
+        )
+        _activeCallSession.value = session
+        _statusMessage.value = "Simulated incoming call from ${resolvedName ?: sanitizedNumber}"
+
+        launchInCallUi()
+
+        if (appContext != null) {
+            CallNotificationManager.showIncomingCallNotification(appContext, session)
+            RingtoneVibrationManager.startRingtoneAndVibration(appContext)
+        }
+
+        EventEngine.instance.emitCallCreated(
+            callId = session.phoneNumber,
+            phoneNumber = session.phoneNumber,
+            type = "INCOMING"
+        )
+    }
+
+    /**
+     * Brings up OpenCell's own InCallActivity whenever a call is initiated or incoming.
      */
     private fun launchInCallUi() {
         val appContext = OpenCellApplication.instanceOrNull ?: return
@@ -135,12 +182,16 @@ class CallEngine(
             }
             appContext.startActivity(inCallIntent)
         } catch (_: Exception) {
-            // Never let UI launching break the underlying call initiation.
+            // Never let UI launching break underlying call handling.
         }
     }
 
     fun answerCall() {
         val session = _activeCallSession.value ?: return
+        val appContext = OpenCellApplication.instanceOrNull
+        if (appContext != null) {
+            RingtoneVibrationManager.stopRingtoneAndVibration(appContext)
+        }
         if (activeSystemCall != null) {
             telecomAdapter.answerCall(activeSystemCall)
         } else {
@@ -151,6 +202,9 @@ class CallEngine(
             _activeCallSession.value = activeSession
             startDurationTimer()
             _statusMessage.value = "Call answered"
+            if (appContext != null) {
+                CallNotificationManager.showActiveCallNotification(appContext, activeSession)
+            }
             EventEngine.instance.emitCallStateChanged(
                 callId = activeSession.phoneNumber,
                 phoneNumber = activeSession.phoneNumber,
@@ -161,6 +215,10 @@ class CallEngine(
 
     fun rejectCall() {
         val session = _activeCallSession.value ?: return
+        val appContext = OpenCellApplication.instanceOrNull
+        if (appContext != null) {
+            RingtoneVibrationManager.stopRingtoneAndVibration(appContext)
+        }
         if (activeSystemCall != null) {
             telecomAdapter.rejectCall(activeSystemCall)
         } else {
@@ -172,6 +230,9 @@ class CallEngine(
             persistEndedCall(endedSession)
             stopDurationTimer()
             _activeCallSession.value = null
+            if (appContext != null) {
+                CallNotificationManager.cancelNotification(appContext)
+            }
             _statusMessage.value = "Call rejected"
             EventEngine.instance.emitCallStateChanged(
                 callId = endedSession.phoneNumber,
@@ -183,6 +244,10 @@ class CallEngine(
 
     fun hangupCall() {
         val session = _activeCallSession.value ?: return
+        val appContext = OpenCellApplication.instanceOrNull
+        if (appContext != null) {
+            RingtoneVibrationManager.stopRingtoneAndVibration(appContext)
+        }
         if (activeSystemCall != null) {
             telecomAdapter.hangupCall(activeSystemCall)
         } else {
@@ -194,8 +259,11 @@ class CallEngine(
             persistEndedCall(endedSession)
             stopDurationTimer()
             _activeCallSession.value = null
+            if (appContext != null) {
+                CallNotificationManager.cancelNotification(appContext)
+            }
             _statusMessage.value = "Call ended"
-            com.example.opencell.gateway.event.EventEngine.instance.emitCallStateChanged(
+            EventEngine.instance.emitCallStateChanged(
                 callId = endedSession.phoneNumber,
                 phoneNumber = endedSession.phoneNumber,
                 state = "ENDED"
@@ -249,15 +317,27 @@ class CallEngine(
         currentInCallService = service
         val handle = call.details?.handle?.schemeSpecificPart ?: "Unknown"
         val state = mapSystemCallState(call.state)
+        val appContext = OpenCellApplication.instanceOrNull
+        val resolvedName = ContactLookup.resolveContactName(appContext, handle)
 
         val session = CallSession(
             phoneNumber = handle,
-            contactName = _activeCallSession.value?.contactName,
+            contactName = _activeCallSession.value?.contactName ?: resolvedName,
             state = state,
             isIncoming = call.state == Call.STATE_RINGING,
             isSimulated = false
         )
         _activeCallSession.value = session
+
+        if (appContext != null) {
+            if (session.isIncoming && state == CallState.RINGING) {
+                CallNotificationManager.showIncomingCallNotification(appContext, session)
+                RingtoneVibrationManager.startRingtoneAndVibration(appContext)
+            } else if (state == CallState.ACTIVE || state == CallState.DIALING) {
+                RingtoneVibrationManager.stopRingtoneAndVibration(appContext)
+                CallNotificationManager.showActiveCallNotification(appContext, session)
+            }
+        }
 
         if (state == CallState.ACTIVE) {
             startDurationTimer()
@@ -267,12 +347,23 @@ class CallEngine(
     internal fun onSystemCallStateChanged(call: Call, state: Int) {
         val mappedState = mapSystemCallState(state)
         val current = _activeCallSession.value ?: return
+        val appContext = OpenCellApplication.instanceOrNull
 
         val updated = current.copy(
             state = mappedState,
             connectTimeMillis = if (mappedState == CallState.ACTIVE && current.connectTimeMillis == null) System.currentTimeMillis() else current.connectTimeMillis
         )
         _activeCallSession.value = updated
+
+        if (appContext != null) {
+            if (mappedState == CallState.RINGING) {
+                CallNotificationManager.showIncomingCallNotification(appContext, updated)
+                RingtoneVibrationManager.startRingtoneAndVibration(appContext)
+            } else if (mappedState == CallState.ACTIVE || mappedState == CallState.HELD) {
+                RingtoneVibrationManager.stopRingtoneAndVibration(appContext)
+                CallNotificationManager.showActiveCallNotification(appContext, updated)
+            }
+        }
 
         if (mappedState == CallState.ACTIVE) {
             startDurationTimer()
@@ -281,12 +372,17 @@ class CallEngine(
             stopDurationTimer()
             _activeCallSession.value = null
             activeSystemCall = null
+            if (appContext != null) {
+                RingtoneVibrationManager.stopRingtoneAndVibration(appContext)
+                CallNotificationManager.cancelNotification(appContext)
+            }
         }
     }
 
     internal fun onSystemCallRemoved(call: Call) {
         if (activeSystemCall == call) {
             val session = _activeCallSession.value
+            val appContext = OpenCellApplication.instanceOrNull
             if (session != null && session.state != CallState.ENDED) {
                 val ended = session.copy(state = CallState.ENDED)
                 persistEndedCall(ended)
@@ -295,6 +391,10 @@ class CallEngine(
             _activeCallSession.value = null
             activeSystemCall = null
             currentInCallService = null
+            if (appContext != null) {
+                RingtoneVibrationManager.stopRingtoneAndVibration(appContext)
+                CallNotificationManager.cancelNotification(appContext)
+            }
         }
     }
 
@@ -316,10 +416,15 @@ class CallEngine(
         durationJob = externalScope.launch {
             while (_activeCallSession.value?.state == CallState.ACTIVE || _activeCallSession.value?.state == CallState.HELD) {
                 delay(1000)
-                _activeCallSession.value = _activeCallSession.value?.let { session ->
+                val updatedSession = _activeCallSession.value?.let { session ->
                     val connectTime = session.connectTimeMillis ?: System.currentTimeMillis()
                     val seconds = ((System.currentTimeMillis() - connectTime) / 1000).toInt()
                     session.copy(durationSeconds = seconds)
+                }
+                _activeCallSession.value = updatedSession
+                val appContext = OpenCellApplication.instanceOrNull
+                if (updatedSession != null && appContext != null) {
+                    CallNotificationManager.showActiveCallNotification(appContext, updatedSession)
                 }
             }
         }

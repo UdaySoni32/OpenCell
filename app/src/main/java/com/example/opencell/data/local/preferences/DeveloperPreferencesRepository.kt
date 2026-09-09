@@ -67,6 +67,15 @@ class DeveloperPreferencesRepositoryImpl(
         scopes = ApiKeyRecord.ALL_SCOPES
     )
 
+    private val defaultTestMasterKey = ApiKeyRecord(
+        id = "default_test_master",
+        name = "Default Test Master Key",
+        key = "oc_test_master_key_12345",
+        scopes = ApiKeyRecord.ALL_SCOPES
+    )
+
+    private val defaultMasterKeys = listOf(defaultMasterKey, defaultTestMasterKey)
+
     override val developerModeEnabled: Flow<Boolean> = context.developerDataStore.data.map { preferences ->
         preferences[Keys.DEVELOPER_MODE_ENABLED] ?: false
     }
@@ -94,13 +103,13 @@ class DeveloperPreferencesRepositoryImpl(
     override val apiKeys: Flow<List<ApiKeyRecord>> = context.developerDataStore.data.map { preferences ->
         val rawJson = preferences[Keys.API_KEYS_JSON]
         if (rawJson.isNullOrBlank()) {
-            listOf(defaultMasterKey)
+            defaultMasterKeys
         } else {
             try {
                 val parsed = json.decodeFromString<List<ApiKeyRecord>>(rawJson)
-                if (parsed.isEmpty()) listOf(defaultMasterKey) else parsed
+                if (parsed.isEmpty()) defaultMasterKeys else parsed
             } catch (_: Exception) {
-                listOf(defaultMasterKey)
+                defaultMasterKeys
             }
         }
     }
@@ -158,12 +167,12 @@ class DeveloperPreferencesRepositoryImpl(
         context.developerDataStore.edit { preferences ->
             val currentRaw = preferences[Keys.API_KEYS_JSON]
             val currentList = if (currentRaw.isNullOrBlank()) {
-                listOf(defaultMasterKey)
+                defaultMasterKeys
             } else {
                 try {
                     json.decodeFromString<List<ApiKeyRecord>>(currentRaw)
                 } catch (_: Exception) {
-                    listOf(defaultMasterKey)
+                    defaultMasterKeys
                 }
             }
             val updated = currentList.filterNot { it.id == keyRecord.id } + keyRecord

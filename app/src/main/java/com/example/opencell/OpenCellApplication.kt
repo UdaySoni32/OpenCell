@@ -1,6 +1,8 @@
 package com.example.opencell
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
 import com.example.opencell.data.local.db.AppDatabase
 import com.example.opencell.data.local.preferences.DeveloperPreferencesRepository
 import com.example.opencell.data.local.preferences.DeveloperPreferencesRepositoryImpl
@@ -32,12 +34,38 @@ class OpenCellApplication : Application() {
     val smsAdapter by lazy { SmsAdapter(this) }
     val messageEngine by lazy { MessageEngine(this, smsAdapter, messageRepository) }
 
+    var isAppInForeground: Boolean = false
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
-        // Load contacts from Room into the shared store (seeds defaults on
-        // first launch). UI and the gateway API both read from here.
-        ContactStore.init(contactRepository)
+
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            private var startedActivities = 0
+
+            override fun onActivityStarted(activity: Activity) {
+                startedActivities++
+                isAppInForeground = true
+            }
+
+            override fun onActivityStopped(activity: Activity) {
+                startedActivities--
+                if (startedActivities <= 0) {
+                    startedActivities = 0
+                    isAppInForeground = false
+                }
+            }
+
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
+
+        // Load contacts from system ContactsContract / Room into the shared store
+        ContactStore.init(contactRepository, this)
     }
 
     companion object {

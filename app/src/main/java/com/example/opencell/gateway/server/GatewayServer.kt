@@ -43,16 +43,31 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNames
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class CallRequestDto(
-    val phoneNumber: String,
+    @JsonNames("phoneNumber", "to")
+    val phoneNumber: String = "",
     val contactName: String? = null
+)
+
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class SimulateIncomingCallRequestDto(
+    @JsonNames("phoneNumber", "to", "caller")
+    val phoneNumber: String = "+15551234567",
+    @JsonNames("callerName", "name")
+    val callerName: String? = null
 )
 
 @Serializable
@@ -216,21 +231,70 @@ class GatewayServer(
                     if (authenticateAndAuthorize(call, requiredScope = ApiKeyRecord.SCOPE_CALLS_CREATE) != null) {
                         try {
                             val bodyText = call.receiveText()
-                            val req = json.decodeFromString<CallRequestDto>(bodyText)
+                            val req = try {
+                                json.decodeFromString<CallRequestDto>(bodyText)
+                            } catch (e: Exception) {
+                                val jsonObj = json.parseToJsonElement(bodyText).jsonObject
+                                val number = jsonObj["to"]?.jsonPrimitive?.content
+                                    ?: jsonObj["phoneNumber"]?.jsonPrimitive?.content
+                                    ?: throw e
+                                val name = jsonObj["contactName"]?.jsonPrimitive?.content
+                                CallRequestDto(phoneNumber = number, contactName = name)
+                            }
+                            val targetNumber = req.phoneNumber.ifBlank {
+                                try {
+                                    val jsonObj = json.parseToJsonElement(bodyText).jsonObject
+                                    jsonObj["to"]?.jsonPrimitive?.content
+                                        ?: jsonObj["phoneNumber"]?.jsonPrimitive?.content
+                                        ?: ""
+                                } catch (_: Exception) { "" }
+                            }
+                            if (targetNumber.isBlank()) {
+                                call.respond(HttpStatusCode.BadRequest, ErrorResponseDto("BAD_REQUEST", "Phone number or 'to' parameter required"))
+                                return@post
+                            }
                             callEngine.initiateCall(
-                                phoneNumber = req.phoneNumber,
+                                phoneNumber = targetNumber,
                                 contactName = req.contactName
                             )
                             eventEngine.emitCallCreated(
                                 callId = UUID.randomUUID().toString(),
-                                phoneNumber = req.phoneNumber,
+                                phoneNumber = targetNumber,
                                 type = "OUTGOING"
                             )
                             call.respond(
                                 mapOf(
                                     "status" to "IN_PROGRESS",
-                                    "phoneNumber" to req.phoneNumber,
+                                    "phoneNumber" to targetNumber,
                                     "message" to "Call initiation submitted"
+                                )
+                            )
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.BadRequest, ErrorResponseDto("BAD_REQUEST", e.message ?: "Invalid body"))
+                        }
+                    }
+                }
+
+                post("/v1/calls/simulate-incoming") {
+                    if (authenticateAndAuthorize(call, requiredScope = ApiKeyRecord.SCOPE_CALLS_CREATE) != null) {
+                        try {
+                            val bodyText = call.receiveText()
+                            val req = if (bodyText.isNotBlank()) {
+                                json.decodeFromString<SimulateIncomingCallRequestDto>(bodyText)
+                            } else {
+                                SimulateIncomingCallRequestDto()
+                            }
+                            callEngine.simulateIncomingCall(
+                                phoneNumber = req.phoneNumber,
+                                callerName = req.callerName
+                            )
+                            val session = callEngine.activeCallSession.value
+                            call.respond(
+                                mapOf(
+                                    "status" to "RINGING",
+                                    "phoneNumber" to (session?.phoneNumber ?: req.phoneNumber),
+                                    "callerName" to (session?.contactName ?: req.callerName ?: "Unknown"),
+                                    "message" to "Simulated incoming call initiated"
                                 )
                             )
                         } catch (e: Exception) {

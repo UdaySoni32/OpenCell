@@ -11,6 +11,7 @@ import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -46,12 +47,6 @@ import com.example.opencell.ui.recents.RecentsViewModel
 import com.example.opencell.ui.settings.SettingsScreen
 import com.example.opencell.ui.settings.SettingsViewModel
 
-/**
- * Top-level tabs. The dialer is intentionally NOT a tab: it is a feature
- * (bottom-sheet dialpad) surfaced from the Recents home screen, keeping the
- * navigation bar uncluttered. The phone engine still backs it via
- * [PhoneViewModel].
- */
 data class NavTabItem(
     val route: NavRoute,
     val title: String,
@@ -59,6 +54,7 @@ data class NavTabItem(
 )
 
 val navTabItems = listOf(
+    NavTabItem(NavRoute.Phone, "Phone", Icons.Default.Phone),
     NavTabItem(NavRoute.Recents, "Recents", Icons.Default.History),
     NavTabItem(NavRoute.Messages, "Messages", Icons.AutoMirrored.Filled.Message),
     NavTabItem(NavRoute.Contacts, "Contacts", Icons.Default.Person),
@@ -77,10 +73,8 @@ fun AdaptiveNavigationShell(
     dialPadRequest: String? = null,
     modifier: Modifier = Modifier
 ) {
-    // Recents is the home screen: fresh launches open into call history with
-    // the dialpad one tap away.
-    var currentTab by remember { mutableStateOf<NavRoute>(NavRoute.Recents) }
-    val backStack = rememberNavBackStack(NavRoute.Recents)
+    var currentTab by remember { mutableStateOf<NavRoute>(NavRoute.Phone) }
+    val backStack = rememberNavBackStack(NavRoute.Phone)
 
     val onNavigateToTab: (NavRoute) -> Unit = { tab ->
         currentTab = tab
@@ -89,30 +83,13 @@ fun AdaptiveNavigationShell(
         }
     }
 
-    // Incoming ACTION_DIAL / tel: intents (e.g. tapping a phone link elsewhere)
-    // are handled here when OpenCell is the default dialer: prefill the number
-    // and surface the dialer sheet over the Recents home screen rather than
-    // handing off to another dialer.
     LaunchedEffect(dialPadRequest) {
         val number = dialPadRequest ?: return@LaunchedEffect
         phoneViewModel.setDialedNumber(number)
-        currentTab = NavRoute.Recents
-        if (backStack.lastOrNull() != NavRoute.Recents) {
-            backStack.add(NavRoute.Recents)
+        currentTab = NavRoute.Phone
+        if (backStack.lastOrNull() != NavRoute.Phone) {
+            backStack.add(NavRoute.Phone)
         }
-        recentsViewModel.openDialer()
-    }
-
-    fun phoneTabContent(): @Composable () -> Unit = {
-        PhoneScreenRoute(
-            viewModel = phoneViewModel,
-            onBack = {
-                // The dialer is no longer a tab; "back" returns to the home
-                // screen if Phone was pushed programmatically.
-                if (backStack.size > 1) backStack.removeLastOrNull()
-                currentTab = NavRoute.Recents
-            }
-        )
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -149,13 +126,17 @@ fun AdaptiveNavigationShell(
                     entryProvider = { key ->
                         NavEntry(key) {
                             when (key) {
-                                is NavRoute.Phone -> phoneTabContent()
+                                is NavRoute.Phone -> PhoneScreenRoute(
+                                    viewModel = phoneViewModel,
+                                    onBack = {
+                                        if (backStack.size > 1) backStack.removeLastOrNull()
+                                        currentTab = NavRoute.Recents
+                                    }
+                                )
                                 is NavRoute.Recents -> RecentsScreen(
                                     viewModel = recentsViewModel,
                                     phoneViewModel = phoneViewModel,
                                     onRedialClick = { num ->
-                                        // Redial places the call directly — no
-                                        // tab switch needed.
                                         phoneViewModel.callNumber(num)
                                     },
                                     onMessageClick = { _ ->
@@ -167,7 +148,6 @@ fun AdaptiveNavigationShell(
                                 is NavRoute.Contacts -> ContactsScreen(
                                     viewModel = contactsViewModel,
                                     onCallClick = { num ->
-                                        // Calling from Contacts dials straight away.
                                         phoneViewModel.callNumber(num)
                                     },
                                     onMessageClick = { _ ->
@@ -214,7 +194,13 @@ fun AdaptiveNavigationShell(
                     entryProvider = { key ->
                         NavEntry(key) {
                             when (key) {
-                                is NavRoute.Phone -> phoneTabContent()
+                                is NavRoute.Phone -> PhoneScreenRoute(
+                                    viewModel = phoneViewModel,
+                                    onBack = {
+                                        if (backStack.size > 1) backStack.removeLastOrNull()
+                                        currentTab = NavRoute.Recents
+                                    }
+                                )
                                 is NavRoute.Recents -> RecentsScreen(
                                     viewModel = recentsViewModel,
                                     phoneViewModel = phoneViewModel,

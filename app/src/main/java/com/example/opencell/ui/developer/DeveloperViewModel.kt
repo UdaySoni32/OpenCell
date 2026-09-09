@@ -15,6 +15,7 @@ import com.example.opencell.domain.model.ServerLogEntry
 import com.example.opencell.domain.model.WebhookRecord
 import com.example.opencell.gateway.logging.ServerLogRepository
 import com.example.opencell.gateway.service.GatewayServerService
+import com.example.opencell.telecom.CallEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -166,6 +167,16 @@ class DeveloperViewModel(
         viewModelScope.launch {
             developerPreferencesRepository.setDeveloperModeEnabled(enabled)
             _statusMessage.value = if (enabled) "Developer Mode Activated" else "Developer Mode Deactivated"
+        }
+    }
+
+    fun simulateIncomingCall(phone: String = "+15551234567", name: String? = "Alice Smith") {
+        val engine = CallEngine.instance
+        if (engine != null) {
+            engine.simulateIncomingCall(phone, name)
+            _statusMessage.value = "Simulated incoming call triggered"
+        } else {
+            _statusMessage.value = "CallEngine instance not initialized"
         }
     }
 

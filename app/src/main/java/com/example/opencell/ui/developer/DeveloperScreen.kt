@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Api
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
@@ -120,6 +121,7 @@ fun DeveloperScreen(
         onPopulateSampleData = viewModel::populateSampleData,
         onClearDatabase = viewModel::clearDatabase,
         onResetPreferences = viewModel::resetPreferences,
+        onSimulateIncomingCall = { viewModel.simulateIncomingCall("+15551234567", "Alice Smith") },
         modifier = modifier
     )
 }
@@ -144,6 +146,7 @@ fun DeveloperScreenContent(
     onPopulateSampleData: () -> Unit,
     onClearDatabase: () -> Unit,
     onResetPreferences: () -> Unit,
+    onSimulateIncomingCall: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -219,6 +222,50 @@ fun DeveloperScreenContent(
                         checked = developerModeEnabled,
                         onCheckedChange = onDeveloperModeChange
                     )
+                }
+            }
+
+            // Telephony Simulation Tools Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Call,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Call Simulation Tools",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Trigger an immediate simulated incoming call for instant testing on emulators.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Button(
+                        onClick = onSimulateIncomingCall,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Call, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Simulate Incoming Call (+15551234567 / Alice Smith)")
+                    }
                 }
             }
 
@@ -500,6 +547,7 @@ fun DeveloperScreenContent(
                         "GET /v1/capabilities" to "Public / Telephony & Modem Capabilities",
                         "GET /v1/calls" to "calls:read Scope / Call Records History",
                         "POST /v1/calls" to "calls:create Scope / Initiate Cellular Call",
+                        "POST /v1/calls/simulate-incoming" to "calls:create Scope / Simulate Incoming Call",
                         "GET /v1/calls/{id}" to "calls:read Scope / Get Call Details",
                         "POST /v1/calls/{id}/answer" to "calls:control Scope / Answer Call",
                         "POST /v1/calls/{id}/reject" to "calls:control Scope / Reject Call",

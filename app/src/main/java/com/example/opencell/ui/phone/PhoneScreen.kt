@@ -17,32 +17,47 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.CallMade
+import androidx.compose.material.icons.automirrored.filled.CallMissed
+import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.Dialpad
+import androidx.compose.material.icons.filled.KeyboardHide
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,13 +72,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.opencell.domain.model.CallRecord
 import com.example.opencell.domain.model.CallSession
 import com.example.opencell.domain.model.CallState
+import com.example.opencell.domain.model.CallType
+import com.example.opencell.domain.model.Contact
 import com.example.opencell.ui.theme.OpenCellTheme
 import com.example.opencell.ui.theme.successColor
 import java.util.Locale
-
-private const val MAX_DIALPAD_DIGITS = 20
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,9 +90,12 @@ fun PhoneScreen(
 ) {
     val context = LocalContext.current
     val dialedNumber by viewModel.dialedNumber.collectAsStateWithLifecycle()
+    val isDialpadExpanded by viewModel.isDialpadExpanded.collectAsStateWithLifecycle()
     val activeCallSession by viewModel.activeCallSession.collectAsStateWithLifecycle()
     val isModemAvailable by viewModel.isModemAvailable.collectAsStateWithLifecycle()
     val isDefaultDialer by viewModel.isDefaultDialer.collectAsStateWithLifecycle()
+    val speedDialContacts by viewModel.speedDialContacts.collectAsStateWithLifecycle()
+    val recentCalls by viewModel.recentCalls.collectAsStateWithLifecycle()
     val statusMessage by viewModel.statusMessage.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -99,19 +118,26 @@ fun PhoneScreen(
 
     PhoneScreenContent(
         dialedNumber = dialedNumber,
+        isDialpadExpanded = isDialpadExpanded,
         activeCallSession = activeCallSession,
         isModemAvailable = isModemAvailable,
         isDefaultDialer = isDefaultDialer,
+        speedDialContacts = speedDialContacts,
+        recentCalls = recentCalls,
         snackbarHostState = snackbarHostState,
         onBack = onBack,
         onRequestSetDefaultDialer = {
             val intent = viewModel.getSetDefaultDialerIntent(context)
             roleLauncher.launch(intent)
         },
+        onToggleDialpad = viewModel::toggleDialpad,
         onDigitClick = viewModel::onDigitClick,
         onBackspaceClick = viewModel::onBackspaceClick,
         onClearClick = viewModel::onClearClick,
         onCallClick = viewModel::onCallClick,
+        onCallNumber = viewModel::callNumber,
+        onAddContact = viewModel::addContact,
+        onSimulateIncomingCall = { viewModel.simulateIncomingCall() },
         onHangupClick = viewModel::hangupCall,
         modifier = modifier
     )
@@ -121,19 +147,28 @@ fun PhoneScreen(
 @Composable
 fun PhoneScreenContent(
     dialedNumber: String,
+    isDialpadExpanded: Boolean,
     activeCallSession: CallSession?,
     isModemAvailable: Boolean,
     isDefaultDialer: Boolean = true,
+    speedDialContacts: List<Contact> = emptyList(),
+    recentCalls: List<CallRecord> = emptyList(),
     snackbarHostState: SnackbarHostState,
     onBack: (() -> Unit)? = null,
     onRequestSetDefaultDialer: () -> Unit = {},
+    onToggleDialpad: () -> Unit = {},
     onDigitClick: (String) -> Unit,
     onBackspaceClick: () -> Unit,
     onClearClick: () -> Unit = { onBackspaceClick() },
     onCallClick: () -> Unit,
+    onCallNumber: (String) -> Unit = {},
+    onAddContact: (String, String, String?) -> Unit = { _, _, _ -> },
+    onSimulateIncomingCall: () -> Unit = {},
     onHangupClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var isAddContactOpen by remember { mutableStateOf(false) }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -149,6 +184,20 @@ fun PhoneScreenContent(
                         Text("Phone & Dialer")
                     }
                 },
+                actions = {
+                    AssistChip(
+                        onClick = onSimulateIncomingCall,
+                        label = { Text("Simulate Call") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Call,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                },
                 navigationIcon = {
                     if (onBack != null) {
                         IconButton(onClick = onBack) {
@@ -161,6 +210,17 @@ fun PhoneScreenContent(
                 }
             )
         },
+        floatingActionButton = {
+            if (!isDialpadExpanded) {
+                ExtendedFloatingActionButton(
+                    onClick = onToggleDialpad,
+                    icon = { Icon(Icons.Default.Dialpad, contentDescription = "Keypad") },
+                    text = { Text("Keypad") },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Box(
@@ -171,13 +231,15 @@ fun PhoneScreenContent(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 4.dp),
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top Banners
+                // Status Banners
                 if (!isDefaultDialer) {
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.primaryContainer
                     ) {
@@ -213,7 +275,9 @@ fun PhoneScreenContent(
 
                 if (!isModemAvailable) {
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.errorContainer
                     ) {
@@ -227,100 +291,143 @@ fun PhoneScreenContent(
                     }
                 }
 
-                // Number Display
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                        .height(110.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                if (!isDialpadExpanded) {
+                    // COLLAPSED MODE: Display Speed Dial & Recents List
+                    SpeedDialAndRecentsList(
+                        speedDialContacts = speedDialContacts,
+                        recentCalls = recentCalls,
+                        onCallNumber = onCallNumber,
+                        modifier = Modifier.fillMaxSize()
                     )
-                ) {
-                    Box(
+                } else {
+                    // EXPANDED MODE: Display Number Input + Dialpad Grid
+                    // Number Display Card
+                    Card(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = dialedNumber.ifEmpty { "Enter Number" },
-                            style = MaterialTheme.typography.headlineLarge.copy(
-                                fontSize = if (dialedNumber.length > 12) 28.sp else 36.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (dialedNumber.isEmpty()) MaterialTheme.colorScheme.outline
-                                else MaterialTheme.colorScheme.onSurface
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                            .height(90.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                         )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = dialedNumber.ifEmpty { "Enter Number" },
+                                style = MaterialTheme.typography.headlineLarge.copy(
+                                    fontSize = if (dialedNumber.length > 12) 26.sp else 34.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (dialedNumber.isEmpty()) MaterialTheme.colorScheme.outline
+                                    else MaterialTheme.colorScheme.onSurface
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
 
-                        if (dialedNumber.isNotEmpty()) {
-                            // Short press deletes one digit; long press clears the field.
-                            Surface(
-                                modifier = Modifier
-                                    .align(Alignment.CenterEnd)
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .combinedClickable(
-                                        onClick = onBackspaceClick,
-                                        onLongClick = onClearClick
-                                    )
-                                    .semantics { contentDescription = "Delete Digit (long-press to clear)" },
-                                shape = CircleShape,
-                                color = Color.Transparent
-                            ) {
-                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Backspace,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
+                            if (dialedNumber.isNotEmpty()) {
+                                Surface(
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .combinedClickable(
+                                            onClick = onBackspaceClick,
+                                            onLongClick = onClearClick
+                                        )
+                                        .semantics { contentDescription = "Delete Digit (long-press to clear)" },
+                                    shape = CircleShape,
+                                    color = Color.Transparent
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Backspace,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                // Dialpad Grid (weight keeps the call button visible on small screens)
-                DialPadGrid(
-                    onDigitClick = onDigitClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false)
-                )
-
-                // Call Action Button
-                val callGreen = successColor()
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FloatingActionButton(
-                        onClick = onCallClick,
-                        containerColor = callGreen,
-                        contentColor = Color.White,
-                        shape = CircleShape,
-                        modifier = Modifier.size(72.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Call,
-                            contentDescription = "Call",
-                            modifier = Modifier.size(36.dp)
+                    // Add Contact Option
+                    if (dialedNumber.isNotEmpty()) {
+                        AssistChip(
+                            onClick = { isAddContactOpen = true },
+                            label = { Text("Add to Contacts") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.PersonAdd,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            modifier = Modifier.padding(vertical = 4.dp)
                         )
+                    } else {
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    // Dialpad Grid
+                    DialPadGrid(
+                        onDigitClick = onDigitClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Call & Collapse Action Buttons
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Spacer(modifier = Modifier.size(56.dp)) // Spacer for balance
+
+                        FloatingActionButton(
+                            onClick = onCallClick,
+                            containerColor = successColor(),
+                            contentColor = Color.White,
+                            shape = CircleShape,
+                            modifier = Modifier.size(68.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Call,
+                                contentDescription = "Call",
+                                modifier = Modifier.size(34.dp)
+                            )
+                        }
+
+                        // Collapse FAB
+                        FloatingActionButton(
+                            onClick = onToggleDialpad,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            shape = CircleShape,
+                            modifier = Modifier.size(56.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardHide,
+                                contentDescription = "Hide Keypad",
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            // Transient in-app call banner. The full custom call UX lives in
-            // InCallActivity; this overlay is only a lightweight fallback that
-            // mirrors the same state, so it intentionally offers a single
-            // hang-up action instead of duplicating mute/speaker controls.
+            // Transient active call overlay
             if (activeCallSession != null) {
                 ActiveCallOverlay(
                     callSession = activeCallSession,
@@ -330,6 +437,320 @@ fun PhoneScreenContent(
             }
         }
     }
+
+    if (isAddContactOpen) {
+        AddContactDialogPrefilled(
+            prefilledPhone = dialedNumber,
+            onDismiss = { isAddContactOpen = false },
+            onAdd = { name, phone, carrier ->
+                onAddContact(name, phone, carrier)
+                isAddContactOpen = false
+            }
+        )
+    }
+}
+
+@Composable
+fun SpeedDialAndRecentsList(
+    speedDialContacts: List<Contact>,
+    recentCalls: List<CallRecord>,
+    onCallNumber: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(bottom = 96.dp)
+    ) {
+        if (speedDialContacts.isNotEmpty()) {
+            item {
+                Text(
+                    text = "Speed Dial & Contacts",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
+            items(speedDialContacts.take(5), key = { "sd_${it.id}" }) { contact ->
+                SpeedDialItemCard(
+                    contact = contact,
+                    onCall = { onCallNumber(contact.phoneNumber) }
+                )
+            }
+        }
+
+        if (recentCalls.isNotEmpty()) {
+            item {
+                Text(
+                    text = "Recent Calls",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                )
+            }
+            items(recentCalls.take(8), key = { "rec_${it.id}" }) { call ->
+                RecentCallSpeedItemCard(
+                    call = call,
+                    onCall = { onCallNumber(call.phoneNumber) }
+                )
+            }
+        }
+
+        if (speedDialContacts.isEmpty() && recentCalls.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Phone,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "No Speed Dial or Recent Calls",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Tap Keypad below to enter a number",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SpeedDialItemCard(
+    contact: Contact,
+    onCall: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onCall),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(40.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.tertiaryContainer
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    val avatarLetter = contact.name.ifBlank { contact.phoneNumber }.trim().take(1).uppercase()
+                    Text(
+                        text = avatarLetter,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = contact.name.ifBlank { contact.phoneNumber },
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = contact.phoneNumber + (contact.carrierLabel?.let { " • $it" } ?: ""),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            IconButton(onClick = onCall, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Call,
+                    contentDescription = "Call",
+                    tint = successColor(),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RecentCallSpeedItemCard(
+    call: CallRecord,
+    onCall: () -> Unit
+) {
+    val (icon, tintColor, labelText) = when (call.callType) {
+        CallType.INCOMING -> Triple(
+            Icons.AutoMirrored.Filled.CallReceived,
+            Color(0xFF2E7D32),
+            "Incoming"
+        )
+        CallType.OUTGOING -> Triple(
+            Icons.AutoMirrored.Filled.CallMade,
+            Color(0xFF1976D2),
+            "Outgoing"
+        )
+        CallType.MISSED -> Triple(
+            Icons.AutoMirrored.Filled.CallMissed,
+            Color(0xFFD32F2F),
+            "Missed"
+        )
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onCall),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(40.dp),
+                shape = CircleShape,
+                color = tintColor.copy(alpha = 0.15f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = labelText,
+                        tint = tintColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = labelText,
+                        tint = tintColor,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(end = 4.dp)
+                    )
+                    Text(
+                        text = call.contactName ?: call.phoneNumber,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = call.phoneNumber,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            IconButton(onClick = onCall, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Call,
+                    contentDescription = "Call",
+                    tint = successColor(),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AddContactDialogPrefilled(
+    prefilledPhone: String,
+    onDismiss: () -> Unit,
+    onAdd: (String, String, String?) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf(prefilledPhone) }
+    var carrier by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.PersonAdd,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+                Text("Save Contact")
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Full Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Phone Number") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = carrier,
+                    onValueChange = { carrier = it },
+                    label = { Text("Carrier Label (Optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onAdd(name, phone, carrier) },
+                enabled = name.isNotBlank() && phone.isNotBlank()
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -429,7 +850,7 @@ fun DialPadGrid(
 
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         dialPadKeys.forEach { rowKeys ->
@@ -458,7 +879,7 @@ fun DialPadButton(
 ) {
     Surface(
         modifier = Modifier
-            .size(72.dp)
+            .size(68.dp)
             .clip(CircleShape)
             .clickable(onClick = onClick),
         shape = CircleShape,
@@ -473,7 +894,7 @@ fun DialPadButton(
                 text = digit,
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 26.sp
+                    fontSize = 24.sp
                 ),
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -494,11 +915,13 @@ fun PhoneScreenPreview() {
     OpenCellTheme {
         PhoneScreenContent(
             dialedNumber = "+1 (555) 019-2831",
+            isDialpadExpanded = true,
             activeCallSession = null,
             isModemAvailable = true,
             isDefaultDialer = false,
             snackbarHostState = remember { SnackbarHostState() },
             onRequestSetDefaultDialer = {},
+            onToggleDialpad = {},
             onDigitClick = {},
             onBackspaceClick = {},
             onClearClick = {},

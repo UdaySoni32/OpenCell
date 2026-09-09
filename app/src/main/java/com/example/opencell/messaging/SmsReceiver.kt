@@ -7,6 +7,7 @@ import android.provider.Telephony
 import com.example.opencell.OpenCellApplication
 import com.example.opencell.domain.model.MessageRecord
 import com.example.opencell.domain.model.MessageStatus
+import com.example.opencell.telecom.RingtoneVibrationManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,8 +38,17 @@ class SmsReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    messageRepository.insertMessage(record)
-                    MessageEngine.instance?.onIncomingMessageReceived(record)
+                    val messageId = messageRepository.insertMessage(record)
+                    val insertedRecord = record.copy(id = messageId)
+                    val engine = MessageEngine.instance
+                    if (engine != null) {
+                        engine.onIncomingMessageReceived(insertedRecord)
+                    } else {
+                        MessageNotificationManager.showIncomingMessageNotification(app, insertedRecord)
+                        if (app.isAppInForeground) {
+                            RingtoneVibrationManager.playSmsSoundAndVibration(app)
+                        }
+                    }
                 } finally {
                     pendingResult.finish()
                 }

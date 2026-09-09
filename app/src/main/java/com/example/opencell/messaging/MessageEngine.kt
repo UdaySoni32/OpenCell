@@ -3,10 +3,12 @@ package com.example.opencell.messaging
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import com.example.opencell.OpenCellApplication
 import com.example.opencell.data.repository.MessageRepository
 import com.example.opencell.domain.model.MessageRecord
 import com.example.opencell.domain.model.MessageStatus
 import com.example.opencell.gateway.event.EventEngine
+import com.example.opencell.telecom.RingtoneVibrationManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -145,12 +147,22 @@ class MessageEngine(
 
     internal fun onIncomingMessageReceived(message: MessageRecord) {
         _statusMessage.value = "Incoming SMS received from ${message.address}"
-        com.example.opencell.gateway.event.EventEngine.instance.emitMessageCreated(
+        EventEngine.instance.emitMessageCreated(
             messageId = message.id.toString(),
             address = message.address,
             body = message.body,
             isIncoming = true
         )
+
+        val appContext = OpenCellApplication.instanceOrNull ?: context.applicationContext
+        if (appContext != null) {
+            MessageNotificationManager.showIncomingMessageNotification(appContext, message)
+
+            val app = appContext as? OpenCellApplication
+            if (app?.isAppInForeground == true) {
+                RingtoneVibrationManager.playSmsSoundAndVibration(appContext)
+            }
+        }
     }
 
     fun clearStatusMessage() {

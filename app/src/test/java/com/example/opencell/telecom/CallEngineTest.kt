@@ -100,4 +100,35 @@ class CallEngineTest {
         testScheduler.advanceUntilIdle()
         assertNull(callEngine.activeCallSession.value)
     }
+
+    @Test
+    fun simulateIncomingCall_setsRingingStateAndAnswerClears() = runTest(testDispatcher) {
+        callEngine.simulateIncomingCall("555-0123", "John Doe")
+
+        var session = callEngine.activeCallSession.value
+        assertNotNull(session)
+        assertEquals("555-0123", session?.phoneNumber)
+        assertEquals("John Doe", session?.contactName)
+        assertEquals(CallState.RINGING, session?.state)
+        assertTrue(session?.isIncoming == true)
+
+        callEngine.answerCall()
+        session = callEngine.activeCallSession.value
+        assertNotNull(session)
+        assertEquals(CallState.ACTIVE, session?.state)
+
+        callEngine.hangupCall()
+        testScheduler.advanceUntilIdle()
+        assertNull(callEngine.activeCallSession.value)
+    }
+
+    @Test
+    fun simulateIncomingCall_rejectCallClearsSession() = runTest(testDispatcher) {
+        callEngine.simulateIncomingCall("555-0123", "John Doe")
+
+        callEngine.rejectCall()
+        testScheduler.advanceUntilIdle()
+
+        assertNull(callEngine.activeCallSession.value)
+    }
 }

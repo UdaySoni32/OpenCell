@@ -6,15 +6,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.opencell.data.repository.CallRepository
+import com.example.opencell.domain.model.CallRecord
 import com.example.opencell.domain.model.CallSession
+import com.example.opencell.domain.model.Contact
 import com.example.opencell.telecom.CallEngine
 import com.example.opencell.telecom.DefaultDialerManager
+import com.example.opencell.ui.contacts.ContactStore
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.launch
 
 class PhoneViewModel(
     private val callRepository: CallRepository,
@@ -24,8 +28,20 @@ class PhoneViewModel(
     private val _dialedNumber = MutableStateFlow("")
     val dialedNumber: StateFlow<String> = _dialedNumber.asStateFlow()
 
+    private val _isDialpadExpanded = MutableStateFlow(false)
+    val isDialpadExpanded: StateFlow<Boolean> = _isDialpadExpanded.asStateFlow()
+
     val activeCallSession: StateFlow<CallSession?> = callEngine.activeCallSession
     val isModemAvailable: StateFlow<Boolean> = callEngine.isModemAvailable
+
+    val speedDialContacts: StateFlow<List<Contact>> = ContactStore.contacts
+
+    val recentCalls: StateFlow<List<CallRecord>> = callRepository.getAllCalls()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     private val _isDefaultDialer = MutableStateFlow(true)
     val isDefaultDialer: StateFlow<Boolean> = _isDefaultDialer.asStateFlow()
@@ -50,7 +66,18 @@ class PhoneViewModel(
         initialValue = null
     )
 
+    fun toggleDialpad() {
+        _isDialpadExpanded.value = !_isDialpadExpanded.value
+    }
+
+    fun setDialpadExpanded(expanded: Boolean) {
+        _isDialpadExpanded.value = expanded
+    }
+
     fun onDigitClick(digit: String) {
+        if (!_isDialpadExpanded.value) {
+            _isDialpadExpanded.value = true
+        }
         if (activeCallSession.value != null) {
             val char = digit.firstOrNull()
             if (char != null) {
@@ -76,6 +103,7 @@ class PhoneViewModel(
         val number = _dialedNumber.value.ifBlank { "Unknown" }
         callEngine.initiateCall(number)
         _dialedNumber.value = ""
+        _isDialpadExpanded.value = false
     }
 
     /**
@@ -88,11 +116,28 @@ class PhoneViewModel(
     }
 
     /**
+     * Triggers a simulated incoming call for instant testing.
+     */
+    fun simulateIncomingCall(number: String? = null) {
+        val target = number?.ifBlank { null } ?: _dialedNumber.value.ifBlank { "+15551234567" }
+        callEngine.simulateIncomingCall(target)
+    }
+
+    /**
      * Replaces the dial pad number (used when handling external ACTION_DIAL /
      * ACTION_VIEW tel: intents routed to OpenCell as the default dialer).
      */
     fun setDialedNumber(number: String) {
         _dialedNumber.value = number.take(40)
+        if (number.isNotBlank()) {
+            _isDialpadExpanded.value = true
+        }
+    }
+
+    fun addContact(name: String, phone: String, carrier: String?) {
+        viewModelScope.launch {
+            ContactStore.add(name, phone, carrier)
+        }
     }
 
     fun answerCall() {
