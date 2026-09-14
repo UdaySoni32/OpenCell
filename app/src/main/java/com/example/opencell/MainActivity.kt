@@ -55,9 +55,6 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    // Holds a phone number requested through an external ACTION_DIAL / ACTION_VIEW
-    // (tel:) intent. When OpenCell is the default dialer these intents must be
-    // handled in-app instead of being handed off to another dialer.
     private val dialPadRequest = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,6 +85,9 @@ class MainActivity : ComponentActivity() {
                         recentsViewModel = recentsViewModel,
                         settingsViewModel = settingsViewModel,
                         developerViewModel = developerViewModel,
+                        callRepository = app.callRepository,
+                        messageRepository = app.messageRepository,
+                        messageEngine = app.messageEngine,
                         dialPadRequest = dialPadRequest.value
                     )
                 }
@@ -108,11 +108,9 @@ class MainActivity : ComponentActivity() {
         } ?: return
         when (action) {
             Intent.ACTION_DIAL, Intent.ACTION_VIEW -> {
-                // Show the in-app dialer with the number prefilled.
                 dialPadRequest.value = number
             }
             Intent.ACTION_CALL -> {
-                // Dial immediately from within OpenCell (no system dialer handoff).
                 dialPadRequest.value = number
                 app.callEngine.initiateCall(number)
             }

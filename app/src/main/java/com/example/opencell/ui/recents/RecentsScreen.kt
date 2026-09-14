@@ -1,5 +1,6 @@
 package com.example.opencell.ui.recents
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallMissed
 import androidx.compose.material.icons.automirrored.filled.CallReceived
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -51,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.opencell.domain.model.AggregatedCallRecord
 import com.example.opencell.domain.model.CallRecord
 import com.example.opencell.domain.model.CallType
 import com.example.opencell.ui.phone.DialPadGrid
@@ -62,8 +65,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Home screen: recent calls with filters. The dialer is a feature here — a
- * "Dial" FAB opens a bottom-sheet dialpad — rather than a separate tab.
+ * Home screen: recent calls with filters and consecutive call aggregation.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +74,7 @@ fun RecentsScreen(
     phoneViewModel: PhoneViewModel,
     onRedialClick: (String) -> Unit = {},
     onMessageClick: (String) -> Unit = {},
+    onContactDetailsClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val calls by viewModel.calls.collectAsStateWithLifecycle()
@@ -90,6 +93,7 @@ fun RecentsScreen(
         phoneViewModel = phoneViewModel,
         onRedialClick = onRedialClick,
         onMessageClick = onMessageClick,
+        onContactDetailsClick = onContactDetailsClick,
         modifier = modifier
     )
 }
@@ -97,17 +101,18 @@ fun RecentsScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecentsScreenContent(
-    calls: List<CallRecord>,
+    calls: List<AggregatedCallRecord>,
     selectedFilter: CallType?,
     isDialerOpen: Boolean,
     onFilterSelect: (CallType?) -> Unit,
-    onDeleteCall: (CallRecord) -> Unit,
+    onDeleteCall: (AggregatedCallRecord) -> Unit,
     onClearAll: () -> Unit,
     onOpenDialer: () -> Unit,
     onCloseDialer: () -> Unit,
     phoneViewModel: PhoneViewModel?,
     onRedialClick: (String) -> Unit,
     onMessageClick: (String) -> Unit,
+    onContactDetailsClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -139,7 +144,6 @@ fun RecentsScreenContent(
             )
         },
         floatingActionButton = {
-            // Dialer: a feature on the home screen, not a tab.
             ExtendedFloatingActionButton(
                 onClick = onOpenDialer,
                 icon = { Icon(Icons.Default.Dialpad, contentDescription = null) },
@@ -225,14 +229,25 @@ fun RecentsScreenContent(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    // Keep the last rows tappable above the Dial FAB.
                     contentPadding = PaddingValues(bottom = 96.dp)
                 ) {
-                    items(calls, key = { it.id }) { call ->
+                    items(calls, key = { "agg_${it.id}" }) { aggregatedCall ->
+                        val onRedialLambda = remember(aggregatedCall.phoneNumber, onRedialClick) { { onRedialClick(aggregatedCall.phoneNumber) } }
+                        val onMessageLambda = remember(aggregatedCall.phoneNumber, onMessageClick) { { onMessageClick(aggregatedCall.phoneNumber) } }
+                        val onDeleteLambda = remember(aggregatedCall, onDeleteCall) { { onDeleteCall(aggregatedCall) } }
+                        val onContactDetailsLambda = remember(aggregatedCall.phoneNumber, onContactDetailsClick) {
+                            {
+                                onContactDetailsClick?.invoke(aggregatedCall.phoneNumber)
+                                Unit
+                            }
+                        }
+
                         RecentCallItemCard(
-                            call = call,
-                            onRedial = { onRedialClick(call.phoneNumber) },
-                            onDelete = { onDeleteCall(call) }
+                            call = aggregatedCall,
+                            onRedial = onRedialLambda,
+                            onMessage = onMessageLambda,
+                            onDelete = onDeleteLambda,
+                            onContactDetails = onContactDetailsLambda
                         )
                     }
                 }
@@ -240,7 +255,6 @@ fun RecentsScreenContent(
         }
     }
 
-    // Dialer bottom sheet — the dialpad is a feature of the home screen.
     if (isDialerOpen && phoneViewModel != null) {
         DialerBottomSheet(
             phoneViewModel = phoneViewModel,
@@ -315,33 +329,44 @@ fun DialerBottomSheet(
 
 @Composable
 fun RecentCallItemCard(
-    call: CallRecord,
+    call: AggregatedCallRecord,
     onRedial: () -> Unit,
-    onDelete: () -> Unit
+    onMessage: () -> Unit,
+    onDelete: () -> Unit,
+    onContactDetails: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()) }
     val timeStr = remember(call.timestamp) { dateFormat.format(Date(call.timestamp)) }
 
-    val (icon, tintColor, labelText) = when (call.callType) {
-        CallType.INCOMING -> Triple(
-            Icons.AutoMirrored.Filled.CallReceived,
-            Color(0xFF2E7D32),
-            "Incoming"
-        )
-        CallType.OUTGOING -> Triple(
-            Icons.AutoMirrored.Filled.CallMade,
-            Color(0xFF1976D2),
-            "Outgoing"
-        )
-        CallType.MISSED -> Triple(
-            Icons.AutoMirrored.Filled.CallMissed,
-            Color(0xFFD32F2F),
-            "Missed"
-        )
+    val (icon, tintColor, labelText) = remember(call.callType) {
+        when (call.callType) {
+            CallType.INCOMING -> Triple(
+                Icons.AutoMirrored.Filled.CallReceived,
+                Color(0xFF2E7D32),
+                "Incoming"
+            )
+            CallType.OUTGOING -> Triple(
+                Icons.AutoMirrored.Filled.CallMade,
+                Color(0xFF1976D2),
+                "Outgoing"
+            )
+            CallType.MISSED -> Triple(
+                Icons.AutoMirrored.Filled.CallMissed,
+                Color(0xFFD32F2F),
+                "Missed"
+            )
+        }
+    }
+
+    val displayNameWithCount = remember(call.contactName, call.phoneNumber, call.count) {
+        val name = call.contactName ?: call.phoneNumber
+        if (call.count > 1) "$name (${call.count})" else name
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onContactDetails),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
@@ -381,7 +406,7 @@ fun RecentCallItemCard(
                             .padding(end = 4.dp)
                     )
                     Text(
-                        text = call.contactName ?: call.phoneNumber,
+                        text = displayNameWithCount,
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
@@ -420,6 +445,13 @@ fun RecentCallItemCard(
                         tint = successColor()
                     )
                 }
+                IconButton(onClick = onMessage) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Message,
+                        contentDescription = "Send Message",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
                 IconButton(onClick = onDelete) {
                     Icon(
                         imageVector = Icons.Default.Delete,
@@ -438,21 +470,27 @@ fun RecentsScreenPreview() {
     OpenCellTheme {
         RecentsScreenContent(
             calls = listOf(
-                CallRecord(
-                    id = 1,
-                    phoneNumber = "+1 (555) 012-3456",
-                    contactName = "Alice Smith",
-                    callType = CallType.INCOMING,
-                    timestamp = System.currentTimeMillis() - 1800000,
-                    durationSeconds = 142
+                AggregatedCallRecord(
+                    primaryCall = CallRecord(
+                        id = 1,
+                        phoneNumber = "+1 (555) 012-3456",
+                        contactName = "Alice Smith",
+                        callType = CallType.INCOMING,
+                        timestamp = System.currentTimeMillis() - 1800000,
+                        durationSeconds = 142
+                    ),
+                    count = 3
                 ),
-                CallRecord(
-                    id = 2,
-                    phoneNumber = "+1 (800) 555-0100",
-                    contactName = "Network Ops",
-                    callType = CallType.MISSED,
-                    timestamp = System.currentTimeMillis() - 3600000,
-                    durationSeconds = 0
+                AggregatedCallRecord(
+                    primaryCall = CallRecord(
+                        id = 2,
+                        phoneNumber = "+1 (800) 555-0100",
+                        contactName = "Network Ops",
+                        callType = CallType.MISSED,
+                        timestamp = System.currentTimeMillis() - 3600000,
+                        durationSeconds = 0
+                    ),
+                    count = 1
                 )
             ),
             selectedFilter = null,

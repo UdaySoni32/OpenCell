@@ -6,17 +6,23 @@ import androidx.lifecycle.viewModelScope
 import com.example.opencell.data.repository.MessageRepository
 import com.example.opencell.domain.model.MessageRecord
 import com.example.opencell.messaging.MessageEngine
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class MessagesViewModel(
     private val messageRepository: MessageRepository,
-    private val messageEngine: MessageEngine
+    private val messageEngine: MessageEngine,
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -25,27 +31,32 @@ class MessagesViewModel(
     private val _isComposeOpen = MutableStateFlow(false)
     val isComposeOpen: StateFlow<Boolean> = _isComposeOpen.asStateFlow()
 
+    @OptIn(FlowPreview::class)
+    private val debouncedSearchQuery = _searchQuery.debounce { if (it.isEmpty()) 0L else 300L }
+
     val statusMessage: StateFlow<String?> = messageEngine.statusMessage
     val isSmsCapable: StateFlow<Boolean> = messageEngine.isSmsCapable
 
     val messages: StateFlow<List<MessageRecord>> = combine(
-        messageRepository.getAllMessages(),
-        _searchQuery
-    ) { allMessages, query ->
+        messageRepository.getConversations(),
+        debouncedSearchQuery
+    ) { conversations, query ->
         if (query.isBlank()) {
-            allMessages
+            conversations
         } else {
-            allMessages.filter {
+            conversations.filter {
                 it.address.contains(query, ignoreCase = true) ||
                         it.body.contains(query, ignoreCase = true) ||
                         (it.contactName?.contains(query, ignoreCase = true) == true)
             }
         }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )
+    }
+        .flowOn(defaultDispatcher)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query

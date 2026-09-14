@@ -3,18 +3,24 @@ package com.example.opencell.ui.contacts
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.opencell.domain.model.Contact
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class ContactsViewModel(
-    contactSource: Flow<List<Contact>> = ContactStore.contacts
+    contactSource: Flow<List<Contact>> = ContactStore.contacts,
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -23,13 +29,16 @@ class ContactsViewModel(
     private val _isAddContactOpen = MutableStateFlow(false)
     val isAddContactOpen: StateFlow<Boolean> = _isAddContactOpen.asStateFlow()
 
+    @OptIn(FlowPreview::class)
+    private val debouncedSearchQuery = _searchQuery.debounce { if (it.isEmpty()) 0L else 300L }
+
     val contacts: StateFlow<List<Contact>> = combine(
         contactSource,
-        _searchQuery
+        debouncedSearchQuery
     ) { list, query ->
         val deduplicated = list.distinctBy { contact ->
             val cleanName = contact.name.trim()
-            val normPhone = contact.phoneNumber.replace(Regex("[^0-9]"), "").takeLast(10)
+            val normPhone = contact.phoneNumber.filter { char -> char.isDigit() }.takeLast(10)
             if (normPhone.isNotEmpty()) {
                 normPhone
             } else if (cleanName.isNotEmpty()) {
@@ -54,14 +63,17 @@ class ContactsViewModel(
             }
         }
         filtered.sortedWith(contactComparator)
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )
+    }
+        .flowOn(defaultDispatcher)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     val groupedContacts: StateFlow<Map<String, List<Contact>>> = contacts
         .map { list -> list.groupBy { getSectionHeader(it) } }
+        .flowOn(defaultDispatcher)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),

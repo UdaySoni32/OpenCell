@@ -4,18 +4,24 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.opencell.data.repository.CallRepository
+import com.example.opencell.domain.model.AggregatedCallRecord
 import com.example.opencell.domain.model.CallRecord
 import com.example.opencell.domain.model.CallType
+import com.example.opencell.domain.model.aggregateConsecutiveCalls
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class RecentsViewModel(
-    private val callRepository: CallRepository
+    private val callRepository: CallRepository,
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : ViewModel() {
 
     private val _selectedFilter = MutableStateFlow<CallType?>(null) // null = ALL
@@ -33,23 +39,32 @@ class RecentsViewModel(
         _isDialerOpen.value = false
     }
 
-    val calls: StateFlow<List<CallRecord>> = combine(
+    val calls: StateFlow<List<AggregatedCallRecord>> = combine(
         callRepository.getAllCalls(),
         _selectedFilter
     ) { allCalls, filter ->
-        if (filter == null) {
+        val filtered = if (filter == null) {
             allCalls
         } else {
             allCalls.filter { it.callType == filter }
         }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )
+        filtered.aggregateConsecutiveCalls()
+    }
+        .flowOn(defaultDispatcher)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     fun setFilter(filter: CallType?) {
         _selectedFilter.value = filter
+    }
+
+    fun deleteCall(call: AggregatedCallRecord) {
+        viewModelScope.launch {
+            call.calls.forEach { callRepository.deleteCall(it) }
+        }
     }
 
     fun deleteCall(call: CallRecord) {

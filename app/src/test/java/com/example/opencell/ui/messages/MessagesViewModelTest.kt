@@ -38,7 +38,7 @@ class MessagesViewModelTest {
         val context = TestContext()
         val smsAdapter = FakeSmsAdapter()
         messageEngine = MessageEngine(context, smsAdapter, repository, externalScope = CoroutineScope(testDispatcher))
-        viewModel = MessagesViewModel(repository, messageEngine)
+        viewModel = MessagesViewModel(repository, messageEngine, testDispatcher)
     }
 
     @After

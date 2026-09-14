@@ -29,7 +29,7 @@ class RecentsViewModelTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         repository = CallRepositoryImpl(FakeCallRecordDao())
-        viewModel = RecentsViewModel(repository)
+        viewModel = RecentsViewModel(repository, testDispatcher)
     }
 
     @After
@@ -53,6 +53,24 @@ class RecentsViewModelTest {
 
         assertEquals(1, viewModel.calls.value.size)
         assertEquals("222", viewModel.calls.value[0].phoneNumber)
+    }
+
+    @Test
+    fun consecutiveCalls_areAggregatedWithRepeatCount() = runTest(testDispatcher) {
+        backgroundScope.launch { viewModel.calls.collect() }
+
+        repository.insertCall(CallRecord(phoneNumber = "111", contactName = "Alice", callType = CallType.INCOMING))
+        repository.insertCall(CallRecord(phoneNumber = "111", contactName = "Alice", callType = CallType.INCOMING))
+        repository.insertCall(CallRecord(phoneNumber = "111", contactName = "Alice", callType = CallType.OUTGOING))
+        repository.insertCall(CallRecord(phoneNumber = "222", contactName = "Bob", callType = CallType.MISSED))
+
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(2, viewModel.calls.value.size)
+        assertEquals("111", viewModel.calls.value[0].phoneNumber)
+        assertEquals(3, viewModel.calls.value[0].count)
+        assertEquals("222", viewModel.calls.value[1].phoneNumber)
+        assertEquals(1, viewModel.calls.value[1].count)
     }
 
     @Test

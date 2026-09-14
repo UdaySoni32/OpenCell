@@ -45,6 +45,12 @@ val LightSurfaceVariant = BrandSurface2
 val LightOnSurfaceVariant = Color(0xFF3F484A)
 val LightOutline = Color(0xFF6F797B)
 
+val LightSurfaceContainerLowest = Color(0xFFFFFFFF)
+val LightSurfaceContainerLow = Color(0xFFF0F4F5)
+val LightSurfaceContainer = Color(0xFFEBEFF0)
+val LightSurfaceContainerHigh = Color(0xFFE5E9EA)
+val LightSurfaceContainerHighest = Color(0xFFDFE3E4)
+
 val DarkPrimary = Brand80
 val DarkOnPrimary = Brand20
 val DarkPrimaryContainer = Brand30
@@ -68,3 +74,9 @@ val DarkOnSurface = Color(0xFFDEE3E4)
 val DarkSurfaceVariant = BrandSurface7
 val DarkOnSurfaceVariant = Color(0xFFBFC8CA)
 val DarkOutline = Color(0xFF899294)
+
+val DarkSurfaceContainerLowest = Color(0xFF090F10)
+val DarkSurfaceContainerLow = Color(0xFF171D1E)
+val DarkSurfaceContainer = Color(0xFF1B2122)
+val DarkSurfaceContainerHigh = Color(0xFF252B2C)
+val DarkSurfaceContainerHighest = Color(0xFF303637)

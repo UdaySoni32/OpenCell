@@ -26,7 +26,7 @@ class ContactsViewModelTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         fakeContactList.value = emptyList()
-        viewModel = ContactsViewModel(fakeContactList)
+        viewModel = ContactsViewModel(fakeContactList, testDispatcher)
     }
 
     @After

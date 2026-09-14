@@ -68,10 +68,10 @@ class ContactRepositoryImpl(
                     val rawNumber = if (numIdx >= 0) it.getString(numIdx) else null
                     if (!rawName.isNullOrBlank() && !rawNumber.isNullOrBlank()) {
                         val cleanedName = rawName.trim()
-                        val normalizedPhoneNumber = rawNumber.replace(Regex("[^0-9]"), "").takeLast(10)
+                        val normalizedPhoneNumber = rawNumber.filter { char -> char.isDigit() }.takeLast(10)
                         if (normalizedPhoneNumber.isNotBlank() || cleanedName.isNotBlank()) {
                             val isDuplicate = systemContacts.any { existing ->
-                                val existingNormPhone = existing.phoneNumber.replace(Regex("[^0-9]"), "").takeLast(10)
+                                val existingNormPhone = existing.phoneNumber.filter { char -> char.isDigit() }.takeLast(10)
                                 val existingNameLower = existing.name.trim().lowercase()
                                 (normalizedPhoneNumber.isNotEmpty() && existingNormPhone == normalizedPhoneNumber) ||
                                         (existingNameLower == cleanedName.lowercase() && existingNormPhone == normalizedPhoneNumber)

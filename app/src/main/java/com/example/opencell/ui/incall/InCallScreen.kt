@@ -1,6 +1,5 @@
 package com.example.opencell.ui.incall
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,7 +27,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -56,6 +53,7 @@ import com.example.opencell.domain.model.CallSession
 import com.example.opencell.domain.model.CallState
 import com.example.opencell.ui.theme.OpenCellTheme
 import com.example.opencell.ui.theme.successColor
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,7 +74,7 @@ fun InCallScreen(
     val durationText = remember(callSession.durationSeconds) {
         val mins = callSession.durationSeconds / 60
         val secs = callSession.durationSeconds % 60
-        String.format("%02d:%02d", mins, secs)
+        String.format(Locale.US, "%02d:%02d", mins, secs)
     }
 
     val contactName = callSession.contactName
@@ -99,7 +97,7 @@ fun InCallScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header: State Badge & Timer
+            // Header: State Badge & Live Duration Timer
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
@@ -144,13 +142,13 @@ fun InCallScreen(
                 )
             }
 
-            // Remote Contact Avatar & Info Section
+            // Remote Contact Avatar & Info Section (108dp circular avatar badge)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Surface(
-                    modifier = Modifier.size(120.dp),
+                    modifier = Modifier.size(108.dp),
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
@@ -171,13 +169,13 @@ fun InCallScreen(
                                 imageVector = Icons.Default.Person,
                                 contentDescription = "Contact Avatar",
                                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(64.dp)
+                                modifier = Modifier.size(56.dp)
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Text(
                     text = displayName,
@@ -198,62 +196,66 @@ fun InCallScreen(
                 if (callSession.isSimulated) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "(Simulated Telecom Mode)",
+                        text = "(Simulated Telephony Mode)",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.secondary
                     )
                 }
             }
 
-            // In-Call Controls & Action FABs Section
+            // In-Call Controls (2x2 Grid of Circular Toggle Buttons) & Action FABs
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (callSession.state != CallState.RINGING) {
-                    // Active / Dialing / Held Control Row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 32.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
+                    // 2x2 Grid of circular toggle buttons (Mute, Speaker, Hold, Keypad)
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(bottom = 24.dp)
                     ) {
-                        // Mute Control
-                        InCallControlButton(
-                            icon = if (callSession.isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                            label = if (callSession.isMuted) "Muted" else "Mute",
-                            isActive = callSession.isMuted,
-                            activeColor = MaterialTheme.colorScheme.error,
-                            onClick = onToggleMute
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(32.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            InCallControlButton(
+                                icon = if (callSession.isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                                label = if (callSession.isMuted) "Muted" else "Mute",
+                                isActive = callSession.isMuted,
+                                activeColor = MaterialTheme.colorScheme.error,
+                                onClick = onToggleMute
+                            )
 
-                        // Speaker Control
-                        InCallControlButton(
-                            icon = if (callSession.isSpeakerOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                            label = if (callSession.isSpeakerOn) "Speaker" else "Earpiece",
-                            isActive = callSession.isSpeakerOn,
-                            activeColor = MaterialTheme.colorScheme.primary,
-                            onClick = onToggleSpeaker
-                        )
+                            InCallControlButton(
+                                icon = if (callSession.isSpeakerOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                                label = if (callSession.isSpeakerOn) "Speaker" else "Earpiece",
+                                isActive = callSession.isSpeakerOn,
+                                activeColor = MaterialTheme.colorScheme.primary,
+                                onClick = onToggleSpeaker
+                            )
+                        }
 
-                        // Hold Control
-                        InCallControlButton(
-                            icon = if (callSession.isOnHold) Icons.Default.PlayArrow else Icons.Default.Pause,
-                            label = if (callSession.isOnHold) "Resume" else "Hold",
-                            isActive = callSession.isOnHold,
-                            activeColor = MaterialTheme.colorScheme.tertiary,
-                            onClick = onToggleHold
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(32.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            InCallControlButton(
+                                icon = if (callSession.isOnHold) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                label = if (callSession.isOnHold) "Resume" else "Hold",
+                                isActive = callSession.isOnHold,
+                                activeColor = MaterialTheme.colorScheme.tertiary,
+                                onClick = onToggleHold
+                            )
 
-                        // Keypad / DTMF Control
-                        InCallControlButton(
-                            icon = Icons.Default.Dialpad,
-                            label = "Keypad",
-                            isActive = showDtmfSheet,
-                            activeColor = MaterialTheme.colorScheme.primary,
-                            onClick = { showDtmfSheet = true }
-                        )
+                            InCallControlButton(
+                                icon = Icons.Default.Dialpad,
+                                label = "Keypad",
+                                isActive = showDtmfSheet,
+                                activeColor = MaterialTheme.colorScheme.primary,
+                                onClick = { showDtmfSheet = true }
+                            )
+                        }
                     }
                 }
 
@@ -293,7 +295,7 @@ fun InCallScreen(
                             )
                         }
                     } else {
-                        // Active / Dialing / Outgoing: Prominent Red Hang Up FAB
+                        // Active / Dialing / Outgoing: Prominent Red End Call FAB
                         FloatingActionButton(
                             onClick = onHangupClick,
                             containerColor = MaterialTheme.colorScheme.error,
@@ -316,7 +318,8 @@ fun InCallScreen(
         if (showDtmfSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showDtmfSheet = false },
-                sheetState = sheetState
+                sheetState = sheetState,
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -359,7 +362,7 @@ fun InCallControlButton(
     ) {
         Surface(
             modifier = Modifier
-                .size(60.dp)
+                .size(68.dp)
                 .clip(CircleShape)
                 .clickable(onClick = onClick),
             shape = CircleShape,
@@ -373,7 +376,7 @@ fun InCallControlButton(
                 Icon(
                     imageVector = icon,
                     contentDescription = label,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(30.dp)
                 )
             }
         }

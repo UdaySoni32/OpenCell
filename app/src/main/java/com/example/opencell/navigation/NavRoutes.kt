@@ -21,4 +21,12 @@ sealed interface NavRoute : NavKey {
 
     @Serializable
     data object Developer : NavRoute
+
+    @Serializable
+    data class ContactDetails(val contactId: String) : NavRoute {
+        constructor(contactId: Long) : this(contactId.toString())
+    }
+
+    @Serializable
+    data class Conversation(val phoneNumber: String) : NavRoute
 }

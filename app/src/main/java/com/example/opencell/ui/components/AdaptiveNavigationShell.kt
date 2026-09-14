@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Settings
@@ -30,14 +29,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import com.example.opencell.data.repository.CallRepository
+import com.example.opencell.data.repository.MessageRepository
+import com.example.opencell.messaging.MessageEngine
 import com.example.opencell.navigation.NavRoute
+import com.example.opencell.ui.contacts.ContactDetailsScreen
+import com.example.opencell.ui.contacts.ContactDetailsViewModel
 import com.example.opencell.ui.contacts.ContactsScreen
 import com.example.opencell.ui.contacts.ContactsViewModel
 import com.example.opencell.ui.developer.DeveloperScreen
 import com.example.opencell.ui.developer.DeveloperViewModel
+import com.example.opencell.ui.messages.ConversationScreen
+import com.example.opencell.ui.messages.ConversationViewModel
 import com.example.opencell.ui.messages.MessagesScreen
 import com.example.opencell.ui.messages.MessagesViewModel
 import com.example.opencell.ui.phone.PhoneScreenRoute
@@ -55,11 +62,10 @@ data class NavTabItem(
 
 val navTabItems = listOf(
     NavTabItem(NavRoute.Phone, "Phone", Icons.Default.Phone),
-    NavTabItem(NavRoute.Recents, "Recents", Icons.Default.History),
-    NavTabItem(NavRoute.Messages, "Messages", Icons.AutoMirrored.Filled.Message),
+    NavTabItem(NavRoute.Messages, "SMS", Icons.AutoMirrored.Filled.Message),
     NavTabItem(NavRoute.Contacts, "Contacts", Icons.Default.Person),
     NavTabItem(NavRoute.Settings, "Settings", Icons.Default.Settings),
-    NavTabItem(NavRoute.Developer, "Dev", Icons.Default.BugReport)
+    NavTabItem(NavRoute.Developer, "Developer", Icons.Default.BugReport)
 )
 
 @Composable
@@ -70,6 +76,9 @@ fun AdaptiveNavigationShell(
     recentsViewModel: RecentsViewModel,
     settingsViewModel: SettingsViewModel,
     developerViewModel: DeveloperViewModel,
+    callRepository: CallRepository,
+    messageRepository: MessageRepository,
+    messageEngine: MessageEngine,
     dialPadRequest: String? = null,
     modifier: Modifier = Modifier
 ) {
@@ -130,7 +139,12 @@ fun AdaptiveNavigationShell(
                                     viewModel = phoneViewModel,
                                     onBack = {
                                         if (backStack.size > 1) backStack.removeLastOrNull()
-                                        currentTab = NavRoute.Recents
+                                    },
+                                    onMessageClick = { phone ->
+                                        backStack.add(NavRoute.Conversation(phone))
+                                    },
+                                    onContactDetailsClick = { phone ->
+                                        backStack.add(NavRoute.ContactDetails(phone))
                                     }
                                 )
                                 is NavRoute.Recents -> RecentsScreen(
@@ -139,22 +153,72 @@ fun AdaptiveNavigationShell(
                                     onRedialClick = { num ->
                                         phoneViewModel.callNumber(num)
                                     },
-                                    onMessageClick = { _ ->
-                                        messagesViewModel.openCompose()
-                                        onNavigateToTab(NavRoute.Messages)
+                                    onMessageClick = { phone ->
+                                        backStack.add(NavRoute.Conversation(phone))
+                                    },
+                                    onContactDetailsClick = { phone ->
+                                        backStack.add(NavRoute.ContactDetails(phone))
                                     }
                                 )
-                                is NavRoute.Messages -> MessagesScreen(viewModel = messagesViewModel)
+                                is NavRoute.Messages -> MessagesScreen(
+                                    viewModel = messagesViewModel,
+                                    onOpenConversation = { phone ->
+                                        backStack.add(NavRoute.Conversation(phone))
+                                    }
+                                )
                                 is NavRoute.Contacts -> ContactsScreen(
                                     viewModel = contactsViewModel,
                                     onCallClick = { num ->
                                         phoneViewModel.callNumber(num)
                                     },
-                                    onMessageClick = { _ ->
-                                        messagesViewModel.openCompose()
-                                        onNavigateToTab(NavRoute.Messages)
+                                    onMessageClick = { phone ->
+                                        backStack.add(NavRoute.Conversation(phone))
+                                    },
+                                    onContactClick = { contactId ->
+                                        backStack.add(NavRoute.ContactDetails(contactId))
                                     }
                                 )
+                                is NavRoute.ContactDetails -> {
+                                    val vm: ContactDetailsViewModel = viewModel(
+                                        key = "details_${key.contactId}",
+                                        factory = ContactDetailsViewModel.Factory(
+                                            contactId = key.contactId,
+                                            callRepository = callRepository,
+                                            messageRepository = messageRepository
+                                        )
+                                    )
+                                    ContactDetailsScreen(
+                                        viewModel = vm,
+                                        onBack = {
+                                            if (backStack.size > 1) backStack.removeLastOrNull()
+                                        },
+                                        onCallClick = { num ->
+                                            phoneViewModel.callNumber(num)
+                                        },
+                                        onMessageClick = { phone ->
+                                            backStack.add(NavRoute.Conversation(phone))
+                                        }
+                                    )
+                                }
+                                is NavRoute.Conversation -> {
+                                    val vm: ConversationViewModel = viewModel(
+                                        key = "conv_${key.phoneNumber}",
+                                        factory = ConversationViewModel.Factory(
+                                            phoneNumber = key.phoneNumber,
+                                            repository = messageRepository,
+                                            messageEngine = messageEngine
+                                        )
+                                    )
+                                    ConversationScreen(
+                                        viewModel = vm,
+                                        onBack = {
+                                            if (backStack.size > 1) backStack.removeLastOrNull()
+                                        },
+                                        onCallClick = { num ->
+                                            phoneViewModel.callNumber(num)
+                                        }
+                                    )
+                                }
                                 is NavRoute.Settings -> SettingsScreen(viewModel = settingsViewModel)
                                 is NavRoute.Developer -> DeveloperScreen(viewModel = developerViewModel)
                             }
@@ -198,7 +262,12 @@ fun AdaptiveNavigationShell(
                                     viewModel = phoneViewModel,
                                     onBack = {
                                         if (backStack.size > 1) backStack.removeLastOrNull()
-                                        currentTab = NavRoute.Recents
+                                    },
+                                    onMessageClick = { phone ->
+                                        backStack.add(NavRoute.Conversation(phone))
+                                    },
+                                    onContactDetailsClick = { phone ->
+                                        backStack.add(NavRoute.ContactDetails(phone))
                                     }
                                 )
                                 is NavRoute.Recents -> RecentsScreen(
@@ -207,22 +276,72 @@ fun AdaptiveNavigationShell(
                                     onRedialClick = { num ->
                                         phoneViewModel.callNumber(num)
                                     },
-                                    onMessageClick = { _ ->
-                                        messagesViewModel.openCompose()
-                                        onNavigateToTab(NavRoute.Messages)
+                                    onMessageClick = { phone ->
+                                        backStack.add(NavRoute.Conversation(phone))
+                                    },
+                                    onContactDetailsClick = { phone ->
+                                        backStack.add(NavRoute.ContactDetails(phone))
                                     }
                                 )
-                                is NavRoute.Messages -> MessagesScreen(viewModel = messagesViewModel)
+                                is NavRoute.Messages -> MessagesScreen(
+                                    viewModel = messagesViewModel,
+                                    onOpenConversation = { phone ->
+                                        backStack.add(NavRoute.Conversation(phone))
+                                    }
+                                )
                                 is NavRoute.Contacts -> ContactsScreen(
                                     viewModel = contactsViewModel,
                                     onCallClick = { num ->
                                         phoneViewModel.callNumber(num)
                                     },
-                                    onMessageClick = { _ ->
-                                        messagesViewModel.openCompose()
-                                        onNavigateToTab(NavRoute.Messages)
+                                    onMessageClick = { phone ->
+                                        backStack.add(NavRoute.Conversation(phone))
+                                    },
+                                    onContactClick = { contactId ->
+                                        backStack.add(NavRoute.ContactDetails(contactId))
                                     }
                                 )
+                                is NavRoute.ContactDetails -> {
+                                    val vm: ContactDetailsViewModel = viewModel(
+                                        key = "details_${key.contactId}",
+                                        factory = ContactDetailsViewModel.Factory(
+                                            contactId = key.contactId,
+                                            callRepository = callRepository,
+                                            messageRepository = messageRepository
+                                        )
+                                    )
+                                    ContactDetailsScreen(
+                                        viewModel = vm,
+                                        onBack = {
+                                            if (backStack.size > 1) backStack.removeLastOrNull()
+                                        },
+                                        onCallClick = { num ->
+                                            phoneViewModel.callNumber(num)
+                                        },
+                                        onMessageClick = { phone ->
+                                            backStack.add(NavRoute.Conversation(phone))
+                                        }
+                                    )
+                                }
+                                is NavRoute.Conversation -> {
+                                    val vm: ConversationViewModel = viewModel(
+                                        key = "conv_${key.phoneNumber}",
+                                        factory = ConversationViewModel.Factory(
+                                            phoneNumber = key.phoneNumber,
+                                            repository = messageRepository,
+                                            messageEngine = messageEngine
+                                        )
+                                    )
+                                    ConversationScreen(
+                                        viewModel = vm,
+                                        onBack = {
+                                            if (backStack.size > 1) backStack.removeLastOrNull()
+                                        },
+                                        onCallClick = { num ->
+                                            phoneViewModel.callNumber(num)
+                                        }
+                                    )
+                                }
                                 is NavRoute.Settings -> SettingsScreen(viewModel = settingsViewModel)
                                 is NavRoute.Developer -> DeveloperScreen(viewModel = developerViewModel)
                             }

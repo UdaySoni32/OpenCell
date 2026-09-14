@@ -35,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -48,7 +49,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -66,14 +67,17 @@ fun ContactsScreen(
     viewModel: ContactsViewModel,
     onCallClick: (String) -> Unit = {},
     onMessageClick: (String) -> Unit = {},
+    onContactClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
+    val groupedContacts by viewModel.groupedContacts.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val isAddContactOpen by viewModel.isAddContactOpen.collectAsStateWithLifecycle()
 
     ContactsScreenContent(
         contacts = contacts,
+        groupedContacts = groupedContacts,
         searchQuery = searchQuery,
         isAddContactOpen = isAddContactOpen,
         onSearchQueryChange = viewModel::onSearchQueryChange,
@@ -83,6 +87,7 @@ fun ContactsScreen(
         onDeleteContact = viewModel::deleteContact,
         onCallClick = onCallClick,
         onMessageClick = onMessageClick,
+        onContactClick = onContactClick,
         modifier = modifier
     )
 }
@@ -91,6 +96,7 @@ fun ContactsScreen(
 @Composable
 fun ContactsScreenContent(
     contacts: List<Contact>,
+    groupedContacts: Map<String, List<Contact>> = emptyMap(),
     searchQuery: String,
     isAddContactOpen: Boolean,
     onSearchQueryChange: (String) -> Unit,
@@ -100,6 +106,7 @@ fun ContactsScreenContent(
     onDeleteContact: (Contact) -> Unit,
     onCallClick: (String) -> Unit,
     onMessageClick: (String) -> Unit,
+    onContactClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -124,6 +131,7 @@ fun ContactsScreenContent(
                 onClick = onOpenAddContact,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 text = { Text("Add Contact") },
+                shape = RoundedCornerShape(16.dp),
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer
             )
@@ -135,7 +143,6 @@ fun ContactsScreenContent(
                 .padding(padding)
                 .padding(horizontal = 12.dp)
         ) {
-            // Search Bar
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
@@ -145,6 +152,12 @@ fun ContactsScreenContent(
                 placeholder = { Text("Search contacts by name, number, or carrier...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 shape = RoundedCornerShape(28.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent
+                ),
                 singleLine = true
             )
 
@@ -181,19 +194,20 @@ fun ContactsScreenContent(
                     }
                 }
             } else {
-                val sortedGroupedContacts = remember(contacts) {
-                    contacts.sortedWith(ContactsViewModel.contactComparator)
-                        .groupBy { ContactsViewModel.getSectionHeader(it) }
+                val displayGroupedContacts = remember(contacts, groupedContacts) {
+                    groupedContacts.ifEmpty {
+                        contacts.sortedWith(ContactsViewModel.contactComparator)
+                            .groupBy { ContactsViewModel.getSectionHeader(it) }
+                    }
                 }
 
                 val listState = rememberLazyListState()
                 val coroutineScope = rememberCoroutineScope()
 
-                // Calculate item index for each section header in the LazyColumn
-                val (sectionIndices, alphabetLetters) = remember(sortedGroupedContacts) {
+                val (sectionIndices, alphabetLetters) = remember(displayGroupedContacts) {
                     val indices = mutableMapOf<String, Int>()
                     var currentIndex = 0
-                    sortedGroupedContacts.forEach { (sectionKey, sectionContacts) ->
+                    displayGroupedContacts.forEach { (sectionKey, sectionContacts) ->
                         indices[sectionKey] = currentIndex
                         currentIndex += 1 + sectionContacts.size
                     }
@@ -206,10 +220,10 @@ fun ContactsScreenContent(
                         state = listState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(end = 28.dp), // Space for A-Z sidebar
+                            .padding(end = 28.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        sortedGroupedContacts.forEach { (sectionKey, sectionContacts) ->
+                        displayGroupedContacts.forEach { (sectionKey, sectionContacts) ->
                             item(key = "header_$sectionKey") {
                                 SectionHeader(letter = sectionKey)
                             }
@@ -217,17 +231,22 @@ fun ContactsScreenContent(
                                 items = sectionContacts,
                                 key = { it.id }
                             ) { contact ->
+                                val onContactClickLambda = remember(contact.id, onContactClick) { { onContactClick(contact.id) } }
+                                val onCallClickLambda = remember(contact.phoneNumber, onCallClick) { { onCallClick(contact.phoneNumber) } }
+                                val onMessageClickLambda = remember(contact.phoneNumber, onMessageClick) { { onMessageClick(contact.phoneNumber) } }
+                                val onDeleteContactLambda = remember(contact, onDeleteContact) { { onDeleteContact(contact) } }
+
                                 ContactItemCard(
                                     contact = contact,
-                                    onCall = { onCallClick(contact.phoneNumber) },
-                                    onMessage = { onMessageClick(contact.phoneNumber) },
-                                    onDelete = { onDeleteContact(contact) }
+                                    onContactClick = onContactClickLambda,
+                                    onCall = onCallClickLambda,
+                                    onMessage = onMessageClickLambda,
+                                    onDelete = onDeleteContactLambda
                                 )
                             }
                         }
                     }
 
-                    // A-Z Fast Scroller Sidebar
                     AlphabetFastScroller(
                         alphabet = alphabetLetters,
                         sectionIndices = sectionIndices,
@@ -317,12 +336,10 @@ fun SectionHeader(
     }
 }
 
-/**
- * Compact ContactItemCard matching standard 56dp height list item ergonomics.
- */
 @Composable
 fun ContactItemCard(
     contact: Contact,
+    onContactClick: () -> Unit,
     onCall: () -> Unit,
     onMessage: () -> Unit,
     onDelete: () -> Unit
@@ -330,8 +347,9 @@ fun ContactItemCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp),
-        shape = RoundedCornerShape(12.dp),
+            .height(56.dp)
+            .clickable(onClick = onContactClick),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
@@ -342,7 +360,6 @@ fun ContactItemCard(
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 36dp Compact Avatar
             Surface(
                 modifier = Modifier.size(36.dp),
                 shape = CircleShape,
@@ -360,7 +377,6 @@ fun ContactItemCard(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Name & Subtitle
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center
@@ -373,28 +389,36 @@ fun ContactItemCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                val subtitle = buildString {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     if (contact.name.isNotBlank()) {
-                        append(contact.phoneNumber)
+                        Text(
+                            text = contact.phoneNumber,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-                    if (!contact.carrierLabel.isNullOrBlank()) {
-                        if (isNotEmpty()) append(" • ")
-                        append(contact.carrierLabel)
-                    }
-                }
 
-                if (subtitle.isNotEmpty()) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    if (!contact.carrierLabel.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest
+                        ) {
+                            Text(
+                                text = contact.carrierLabel,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
                 }
             }
 
-            // Compact Action Buttons
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -450,6 +474,7 @@ fun AddContactDialog(
                 Text("Add New Contact")
             }
         },
+        shape = RoundedCornerShape(28.dp),
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -457,6 +482,7 @@ fun AddContactDialog(
                     onValueChange = { name = it },
                     label = { Text("Full Name") },
                     singleLine = true,
+                    shape = RoundedCornerShape(28.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
@@ -464,6 +490,7 @@ fun AddContactDialog(
                     onValueChange = { phone = it },
                     label = { Text("Phone Number") },
                     singleLine = true,
+                    shape = RoundedCornerShape(28.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
@@ -471,6 +498,7 @@ fun AddContactDialog(
                     onValueChange = { carrier = it },
                     label = { Text("Carrier Label (Optional)") },
                     singleLine = true,
+                    shape = RoundedCornerShape(28.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -509,7 +537,8 @@ fun ContactsScreenPreview() {
             onAddContact = { _, _, _ -> },
             onDeleteContact = {},
             onCallClick = {},
-            onMessageClick = {}
+            onMessageClick = {},
+            onContactClick = {}
         )
     }
 }

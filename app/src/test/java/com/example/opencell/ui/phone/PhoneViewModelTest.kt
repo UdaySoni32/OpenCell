@@ -32,7 +32,7 @@ class PhoneViewModelTest {
         repository = CallRepositoryImpl(FakeCallRecordDao())
         val fakeTelecomAdapter = FakeTelecomAdapter()
         callEngine = CallEngine(fakeTelecomAdapter, repository, externalScope = CoroutineScope(testDispatcher))
-        viewModel = PhoneViewModel(repository, callEngine)
+        viewModel = PhoneViewModel(repository, callEngine, testDispatcher)
     }
 
     @After
