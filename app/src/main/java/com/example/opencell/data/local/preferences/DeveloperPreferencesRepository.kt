@@ -24,6 +24,7 @@ interface DeveloperPreferencesRepository {
     val mockTelephonyEnabled: Flow<Boolean>
     val gatewayServerEnabled: Flow<Boolean>
     val gatewayPort: Flow<Int>
+    val allowRemoteAccess: Flow<Boolean>
     val apiKeys: Flow<List<ApiKeyRecord>>
     val webhooks: Flow<List<WebhookRecord>>
 
@@ -33,6 +34,7 @@ interface DeveloperPreferencesRepository {
     suspend fun setMockTelephonyEnabled(enabled: Boolean)
     suspend fun setGatewayServerEnabled(enabled: Boolean)
     suspend fun setGatewayPort(port: Int)
+    suspend fun setAllowRemoteAccess(enabled: Boolean)
     suspend fun addApiKey(keyRecord: ApiKeyRecord)
     suspend fun revokeApiKey(keyId: String)
     suspend fun addWebhook(webhookRecord: WebhookRecord)
@@ -56,6 +58,7 @@ class DeveloperPreferencesRepositoryImpl(
         val MOCK_TELEPHONY_ENABLED = booleanPreferencesKey("mock_telephony_enabled")
         val GATEWAY_SERVER_ENABLED = booleanPreferencesKey("gateway_server_enabled")
         val GATEWAY_PORT = intPreferencesKey("gateway_port")
+        val ALLOW_REMOTE_ACCESS = booleanPreferencesKey("allow_remote_access")
         val API_KEYS_JSON = stringPreferencesKey("api_keys_json")
         val WEBHOOKS_JSON = stringPreferencesKey("webhooks_json")
     }
@@ -98,6 +101,10 @@ class DeveloperPreferencesRepositoryImpl(
 
     override val gatewayPort: Flow<Int> = context.developerDataStore.data.map { preferences ->
         preferences[Keys.GATEWAY_PORT] ?: 8080
+    }
+
+    override val allowRemoteAccess: Flow<Boolean> = context.developerDataStore.data.map { preferences ->
+        preferences[Keys.ALLOW_REMOTE_ACCESS] ?: true
     }
 
     override val apiKeys: Flow<List<ApiKeyRecord>> = context.developerDataStore.data.map { preferences ->
@@ -160,6 +167,12 @@ class DeveloperPreferencesRepositoryImpl(
     override suspend fun setGatewayPort(port: Int) {
         context.developerDataStore.edit { preferences ->
             preferences[Keys.GATEWAY_PORT] = port
+        }
+    }
+
+    override suspend fun setAllowRemoteAccess(enabled: Boolean) {
+        context.developerDataStore.edit { preferences ->
+            preferences[Keys.ALLOW_REMOTE_ACCESS] = enabled
         }
     }
 

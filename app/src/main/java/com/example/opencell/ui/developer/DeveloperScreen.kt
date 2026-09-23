@@ -32,7 +32,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Webhook
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -84,10 +84,9 @@ fun DeveloperScreen(
 ) {
     val context = LocalContext.current
     val developerModeEnabled by viewModel.developerModeEnabled.collectAsStateWithLifecycle()
-    val apiKey by viewModel.apiKey.collectAsStateWithLifecycle()
-    val apiEndpoint by viewModel.apiEndpoint.collectAsStateWithLifecycle()
-    val mockTelephonyEnabled by viewModel.mockTelephonyEnabled.collectAsStateWithLifecycle()
     val isServerRunning by viewModel.isServerRunning.collectAsStateWithLifecycle()
+    val allowRemoteAccess by viewModel.allowRemoteAccess.collectAsStateWithLifecycle()
+    val localIpAddress by viewModel.localIpAddress.collectAsStateWithLifecycle()
     val gatewayPort by viewModel.gatewayPort.collectAsStateWithLifecycle()
     val apiKeys by viewModel.apiKeys.collectAsStateWithLifecycle()
     val webhooks by viewModel.webhooks.collectAsStateWithLifecycle()
@@ -106,6 +105,8 @@ fun DeveloperScreen(
     DeveloperScreenContent(
         developerModeEnabled = developerModeEnabled,
         isServerRunning = isServerRunning,
+        allowRemoteAccess = allowRemoteAccess,
+        localIpAddress = localIpAddress,
         gatewayPort = gatewayPort,
         apiKeys = apiKeys,
         webhooks = webhooks,
@@ -113,6 +114,7 @@ fun DeveloperScreen(
         snackbarHostState = snackbarHostState,
         onDeveloperModeChange = viewModel::setDeveloperMode,
         onToggleGatewayServer = { start -> viewModel.toggleGatewayServer(context, start) },
+        onAllowRemoteAccessChange = { enabled -> viewModel.setAllowRemoteAccess(context, enabled) },
         onGenerateApiKey = viewModel::generateApiKey,
         onRevokeApiKey = viewModel::revokeApiKey,
         onAddWebhook = viewModel::addWebhook,
@@ -131,6 +133,8 @@ fun DeveloperScreen(
 fun DeveloperScreenContent(
     developerModeEnabled: Boolean,
     isServerRunning: Boolean,
+    allowRemoteAccess: Boolean,
+    localIpAddress: String?,
     gatewayPort: Int,
     apiKeys: List<ApiKeyRecord>,
     webhooks: List<WebhookRecord>,
@@ -138,6 +142,7 @@ fun DeveloperScreenContent(
     snackbarHostState: SnackbarHostState,
     onDeveloperModeChange: (Boolean) -> Unit,
     onToggleGatewayServer: (Boolean) -> Unit,
+    onAllowRemoteAccessChange: (Boolean) -> Unit,
     onGenerateApiKey: (String, String, List<String>) -> Unit,
     onRevokeApiKey: (String) -> Unit,
     onAddWebhook: (String, List<String>, String?) -> Unit,
@@ -312,11 +317,58 @@ fun DeveloperScreenContent(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Text(
-                        text = if (isServerRunning) "Server running at http://127.0.0.1:$gatewayPort" else "Server stopped. Turn on switch to start local gateway.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    // Status & Address Info Box
+                    if (isServerRunning) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "Active API Access Points:",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "• Localhost (ADB): http://127.0.0.1:$gatewayPort",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                                )
+                                if (allowRemoteAccess) {
+                                    val lanIpText = localIpAddress ?: "Detecting LAN IP..."
+                                    Text(
+                                        text = "• LAN (Other Devices): http://$lanIpText:$gatewayPort",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = successColor()
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Apps on other local devices on the same Wi-Fi network can call http://$lanIpText:$gatewayPort/v1/...",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    Text(
+                                        text = "• Remote Access Disabled (127.0.0.1 loopback only)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = "Server stopped. Turn on switch below to start local gateway API.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -333,6 +385,36 @@ fun DeveloperScreenContent(
                         Switch(
                             checked = isServerRunning,
                             onCheckedChange = onToggleGatewayServer
+                        )
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Allow Remote Access (0.0.0.0)",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                            Text(
+                                text = "Enables apps on other local Wi-Fi / network devices to connect directly to phone API",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Switch(
+                            checked = allowRemoteAccess,
+                            onCheckedChange = onAllowRemoteAccessChange
                         )
                     }
                 }

@@ -17,12 +17,14 @@ import com.example.opencell.domain.model.ServerLogType
 import com.example.opencell.gateway.logging.ServerLogRepository
 import com.example.opencell.gateway.server.GatewayServer
 import com.example.opencell.gateway.webhook.WebhookEngine
+import com.example.opencell.util.NetworkUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class GatewayServerService : Service() {
@@ -47,11 +49,21 @@ class GatewayServerService : Service() {
 
         val port = intent?.getIntExtra(EXTRA_PORT, 8080) ?: 8080
 
-        startForeground(NOTIFICATION_ID, createNotification(port))
-
         serviceScope.launch {
             try {
                 val app = application as OpenCellApplication
+                val allowRemote = try {
+                    app.developerPreferencesRepository.allowRemoteAccess.first()
+                } catch (_: Exception) {
+                    true
+                }
+
+                val host = if (allowRemote) "0.0.0.0" else "127.0.0.1"
+                val localIp = NetworkUtils.getLocalIpAddress(app)
+                _localIpAddress.value = localIp
+
+                startForeground(NOTIFICATION_ID, createNotification(port, localIp, allowRemote))
+
                 webhookEngine = WebhookEngine(
                     developerPreferencesRepository = app.developerPreferencesRepository
                 ).apply { start() }
@@ -63,12 +75,20 @@ class GatewayServerService : Service() {
                     messageRepository = app.messageRepository,
                     callEngine = app.callEngine,
                     messageEngine = app.messageEngine,
-                    port = port
+                    port = port,
+                    host = host
                 ).apply { start() }
 
                 _isServerRunning.value = true
                 _serverPort.value = port
-                ServerLogRepository.instance.log(ServerLogType.SYSTEM, "GatewayServerService started on port $port")
+                _serverHost.value = host
+
+                val boundMsg = if (allowRemote) "0.0.0.0 (LAN & Loopback)" else "127.0.0.1 (Loopback only)"
+                ServerLogRepository.instance.log(
+                    ServerLogType.SYSTEM,
+                    "GatewayServerService started on port $port bound to $boundMsg" +
+                            if (localIp != null) " [LAN IP: $localIp]" else ""
+                )
             } catch (e: Exception) {
                 ServerLogRepository.instance.log(ServerLogType.SYSTEM, "GatewayServerService failed to start: ${e.message}")
                 stopSelf()
@@ -109,7 +129,7 @@ class GatewayServerService : Service() {
         }
     }
 
-    private fun createNotification(port: Int): Notification {
+    private fun createNotification(port: Int, localIp: String?, allowRemote: Boolean): Notification {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -128,9 +148,15 @@ class GatewayServerService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val urlText = when {
+            allowRemote && localIp != null -> "LAN: http://$localIp:$port"
+            allowRemote -> "Bound to 0.0.0.0:$port (LAN Access Active)"
+            else -> "http://127.0.0.1:$port (Local Loopback Only)"
+        }
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("OpenCell Local Gateway")
-            .setContentText("REST & WebSockets server active at http://127.0.0.1:$port")
+            .setContentTitle("OpenCell Gateway API Active")
+            .setContentText(urlText)
             .setSmallIcon(R.drawable.stat_sys_download)
             .setContentIntent(pendingIntent)
             .addAction(R.drawable.ic_menu_close_clear_cancel, "Stop Gateway", stopPendingIntent)
@@ -150,6 +176,12 @@ class GatewayServerService : Service() {
 
         private val _serverPort = MutableStateFlow(8080)
         val serverPort: StateFlow<Int> = _serverPort.asStateFlow()
+
+        private val _serverHost = MutableStateFlow("0.0.0.0")
+        val serverHost: StateFlow<String> = _serverHost.asStateFlow()
+
+        private val _localIpAddress = MutableStateFlow<String?>(null)
+        val localIpAddress: StateFlow<String?> = _localIpAddress.asStateFlow()
 
         fun startService(context: Context, port: Int = 8080) {
             val intent = Intent(context, GatewayServerService::class.java).apply {

@@ -30,6 +30,7 @@ class FakeDeveloperPreferencesRepository : DeveloperPreferencesRepository {
     private val _mockTelephony = MutableStateFlow(true)
     private val _gatewayEnabled = MutableStateFlow(false)
     private val _gatewayPort = MutableStateFlow(8080)
+    private val _allowRemoteAccess = MutableStateFlow(true)
     private val _apiKeys = MutableStateFlow<List<ApiKeyRecord>>(
         listOf(
             ApiKeyRecord(
@@ -48,6 +49,7 @@ class FakeDeveloperPreferencesRepository : DeveloperPreferencesRepository {
     override val mockTelephonyEnabled: Flow<Boolean> = _mockTelephony
     override val gatewayServerEnabled: Flow<Boolean> = _gatewayEnabled
     override val gatewayPort: Flow<Int> = _gatewayPort
+    override val allowRemoteAccess: Flow<Boolean> = _allowRemoteAccess
     override val apiKeys: Flow<List<ApiKeyRecord>> = _apiKeys
     override val webhooks: Flow<List<WebhookRecord>> = _webhooks
 
@@ -57,6 +59,7 @@ class FakeDeveloperPreferencesRepository : DeveloperPreferencesRepository {
     override suspend fun setMockTelephonyEnabled(enabled: Boolean) { _mockTelephony.value = enabled }
     override suspend fun setGatewayServerEnabled(enabled: Boolean) { _gatewayEnabled.value = enabled }
     override suspend fun setGatewayPort(port: Int) { _gatewayPort.value = port }
+    override suspend fun setAllowRemoteAccess(enabled: Boolean) { _allowRemoteAccess.value = enabled }
 
     override suspend fun addApiKey(keyRecord: ApiKeyRecord) {
         _apiKeys.value = _apiKeys.value.filterNot { it.id == keyRecord.id } + keyRecord
@@ -81,6 +84,7 @@ class FakeDeveloperPreferencesRepository : DeveloperPreferencesRepository {
         _mockTelephony.value = true
         _gatewayEnabled.value = false
         _gatewayPort.value = 8080
+        _allowRemoteAccess.value = true
         _apiKeys.value = emptyList()
         _webhooks.value = emptyList()
     }

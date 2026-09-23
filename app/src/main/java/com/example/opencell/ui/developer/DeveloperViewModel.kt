@@ -57,6 +57,14 @@ class DeveloperViewModel(
 
     val isServerRunning: StateFlow<Boolean> = GatewayServerService.isServerRunning
 
+    val localIpAddress: StateFlow<String?> = GatewayServerService.localIpAddress
+
+    val allowRemoteAccess: StateFlow<Boolean> = developerPreferencesRepository.allowRemoteAccess.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = true
+    )
+
     val gatewayPort: StateFlow<Int> = developerPreferencesRepository.gatewayPort.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -90,10 +98,21 @@ class DeveloperViewModel(
             if (start) {
                 val currentPort = gatewayPort.value
                 GatewayServerService.startService(context, currentPort)
-                _statusMessage.value = "Gateway Server starting on http://127.0.0.1:$currentPort"
+                _statusMessage.value = "Gateway Server starting on port $currentPort"
             } else {
                 GatewayServerService.stopService(context)
                 _statusMessage.value = "Gateway Server stopped"
+            }
+        }
+    }
+
+    fun setAllowRemoteAccess(context: Context, enabled: Boolean) {
+        viewModelScope.launch {
+            developerPreferencesRepository.setAllowRemoteAccess(enabled)
+            _statusMessage.value = if (enabled) "Remote LAN Access Enabled (0.0.0.0)" else "Remote LAN Access Disabled (127.0.0.1 only)"
+            if (isServerRunning.value) {
+                GatewayServerService.stopService(context)
+                GatewayServerService.startService(context, gatewayPort.value)
             }
         }
     }
