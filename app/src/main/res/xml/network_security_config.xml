@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cleartext is allowed because self-hosted AI servers (Ollama on a Pi/PC) are usually plain http on the LAN or
+     Tailscale (which already encrypts the link). Cloud presets all use https. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

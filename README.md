@@ -17,8 +17,16 @@ Build plan: [`docs/superpowers/plans/2026-10-11-opencell-v2-implementation.md`](
 |---|---|---|
 | 1 | Dialer, in-call UI, SMS, contacts, unified call list | ✅ done |
 | 2 | Gateway API, permissions, `opencell` CLI/MCP ([cli/](cli/README.md)) | ✅ done |
-| 3 | AI (text): SMS agent, call screening, memory | in progress |
-| 4 | Voice agent (Shizuku / speaker / root modes) | planned |
+| 3 | AI (text): SMS agent, call screening, memory | ✅ done |
+| 4 | Voice agent (Shizuku / speaker / root modes) | in progress |
+
+### AI assistant (Settings → AI assistant)
+
+Bring your own model: your own server (Ollama / any OpenAI-compatible URL, e.g. over Tailscale), OpenAI, Anthropic,
+Gemini or Groq, plus an optional fallback. Keys are encrypted with the Android Keystore. The assistant can reply to
+SMS, screen unknown callers by SMS, and learn facts from conversations (you can view and delete every fact). It never
+answers banks, short codes or one-time codes, and everything it sends goes through **Permissions & activity**
+(default: you approve each message).
 
 ## Build
 

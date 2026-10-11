@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.HorizontalDivider
@@ -64,7 +65,7 @@ fun setupStatus(context: Context): SetupStatus {
 }
 
 @Composable
-fun SetupScreen(onOpenGateway: () -> Unit, onOpenActivity: () -> Unit, modifier: Modifier = Modifier) {
+fun SetupScreen(onOpenGateway: () -> Unit, onOpenActivity: () -> Unit, onOpenAssistant: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var refresh by remember { mutableIntStateOf(0) }
     val status = remember(refresh) { setupStatus(context) }
@@ -96,6 +97,13 @@ fun SetupScreen(onOpenGateway: () -> Unit, onOpenActivity: () -> Unit, modifier:
             context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        ListItem(
+            leadingContent = { Icon(Icons.Filled.AutoAwesome, null) },
+            headlineContent = { Text("AI assistant") },
+            supportingContent = { Text("Your AI keys, SMS replies, call screening, memory") },
+            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+            modifier = Modifier.clickable(onClick = onOpenAssistant),
+        )
         ListItem(
             leadingContent = { Icon(Icons.Filled.Computer, null) },
             headlineContent = { Text("Computers & API") },

@@ -50,6 +50,11 @@ class SmsRepository(private val context: Context) {
 
     suspend fun recentMessages(limit: Int): List<SmsMessage> = withContext(Dispatchers.IO) { queryMessages(null, null, limit) }
 
+    /** Newest first. */
+    suspend fun threadMessages(threadId: Long, limit: Int): List<SmsMessage> = withContext(Dispatchers.IO) {
+        queryMessages("${Telephony.Sms.THREAD_ID} = ?", arrayOf(threadId.toString()), limit)
+    }
+
     suspend fun message(id: Long): SmsMessage? = withContext(Dispatchers.IO) {
         queryMessages("${Telephony.Sms._ID} = ?", arrayOf(id.toString()), 1).firstOrNull()
     }

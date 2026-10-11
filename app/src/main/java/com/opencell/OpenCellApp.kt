@@ -2,6 +2,11 @@ package com.opencell
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
+import com.opencell.agent.Assistant
+import com.opencell.agent.AssistantNotifications
+import com.opencell.ai.AiSettingsStore
+import com.opencell.ai.KeystoreSecrets
 import com.opencell.calllog.AppCallRecorder
 import com.opencell.calllog.CallEntry
 import com.opencell.calllog.CallbackLauncher
@@ -20,6 +25,7 @@ import com.opencell.sms.SmsNotifier
 import com.opencell.sms.SmsRepository
 import com.opencell.telecom.ActiveCall
 import com.opencell.telecom.CallManager
+import com.opencell.telecom.CallState
 import com.opencell.telecom.CallPlacer
 import com.opencell.telecom.IncomingCallNotifier
 import kotlinx.coroutines.CoroutineScope
@@ -89,8 +95,30 @@ class AppContainer(context: Context) {
         )
     }
 
+    val secrets = KeystoreSecrets(appContext)
+    val aiSettings = AiSettingsStore(appContext, secrets)
+
+    val assistant: Assistant by lazy {
+        Assistant(
+            ai = aiSettings,
+            llmFactory = aiSettings::buildLlm,
+            sms = smsRepository,
+            contacts = contactsRepository,
+            memory = database.memoryDao(),
+            executor = actionExecutor,
+            policy = settings::currentPolicy,
+            notifier = AssistantNotifications(appContext),
+        )
+    }
+
     init {
         appScope.launch { publishCallEvents() }
+    }
+
+    // shortcut: assistant work runs in the app process after the SMS broadcast finishes; Android may kill a cached
+    // process during a slow LLM call. Move to WorkManager / a short foreground service if replies go missing.
+    private fun launchAssistant(what: String, block: suspend Assistant.() -> Unit) {
+        appScope.launch { runCatching { assistant.block() }.onFailure { Log.e("Assistant", "assistant failed on $what", it) } }
     }
 
     fun unifiedCalls(): Flow<List<CallEntry>> =
@@ -98,6 +126,7 @@ class AppContainer(context: Context) {
 
     fun onIncomingSms(messageId: Long, from: String, body: String) {
         _events.tryEmit(AppEvent.SmsReceived(messageId, from, body, System.currentTimeMillis()))
+        launchAssistant("sms") { onIncomingSms(from, body) }
     }
 
     /** Emits one event per call state change, plus "ended" when a call disappears. */
@@ -108,6 +137,7 @@ class AppContainer(context: Context) {
             val current = calls.associateBy { it.id }
             current.values.filter { previous[it.id]?.state != it.state }.forEach {
                 _events.tryEmit(AppEvent.CallStateChanged(it.id, it.number, it.state.name.lowercase(), it.isIncoming, now))
+                if (it.isIncoming && it.state == CallState.RINGING) launchAssistant("call") { onRingingCall(it.id, it.number) }
             }
             (previous.keys - current.keys).forEach { id ->
                 val gone = previous.getValue(id)
