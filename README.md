@@ -16,8 +16,8 @@ Build plan: [`docs/superpowers/plans/2026-10-11-opencell-v2-implementation.md`](
 | Phase | What | State |
 |---|---|---|
 | 1 | Dialer, in-call UI, SMS, contacts, unified call list | ✅ done |
-| 2 | Gateway API, permissions, `opencell` CLI/MCP | in progress |
-| 3 | AI (text): SMS agent, call screening, memory | planned |
+| 2 | Gateway API, permissions, `opencell` CLI/MCP ([cli/](cli/README.md)) | ✅ done |
+| 3 | AI (text): SMS agent, call screening, memory | in progress |
 | 4 | Voice agent (Shizuku / speaker / root modes) | planned |
 
 ## Build

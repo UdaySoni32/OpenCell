@@ -23,6 +23,10 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Needed to resolve call intents of other apps for call-back -->
@@ -110,6 +114,27 @@
         <receiver
             android:name=".telecom.CallActionReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".policy.ApprovalReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".gateway.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".gateway.GatewayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Local API server that lets the user's own paired computers send SMS and control calls" />
+        </service>
 
         <receiver
             android:name=".sms.SmsDeliverReceiver"

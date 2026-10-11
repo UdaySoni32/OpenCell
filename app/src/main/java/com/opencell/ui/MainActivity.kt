@@ -7,7 +7,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.lifecycleScope
 import com.opencell.OpenCellApp
+import com.opencell.gateway.GatewayService
+import kotlinx.coroutines.launch
 import com.opencell.ui.settings.setupStatus
 import com.opencell.ui.theme.OpenCellTheme
 
@@ -22,6 +25,8 @@ class MainActivity : ComponentActivity() {
         pendingRoute.value = routeFor(intent)
         val start = if (setupStatus(this).complete) Routes.CALLS else Routes.SETUP
         val container = (application as OpenCellApp).container
+        // Foreground start is allowed here; this also revives the gateway if the system killed it.
+        lifecycleScope.launch { if (container.settings.isGatewayEnabled()) GatewayService.start(this@MainActivity) }
         setContent {
             OpenCellTheme {
                 OpenCellNavHost(

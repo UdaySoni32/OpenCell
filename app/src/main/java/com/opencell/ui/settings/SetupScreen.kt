@@ -8,7 +8,12 @@ import android.content.pm.PackageManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -59,7 +64,7 @@ fun setupStatus(context: Context): SetupStatus {
 }
 
 @Composable
-fun SetupScreen(modifier: Modifier = Modifier) {
+fun SetupScreen(onOpenGateway: () -> Unit, onOpenActivity: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var refresh by remember { mutableIntStateOf(0) }
     val status = remember(refresh) { setupStatus(context) }
@@ -90,6 +95,21 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         SetupRow("Notification access", "Shows WhatsApp, Discord and other app calls in your call list", status.notificationAccess) {
             context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        ListItem(
+            leadingContent = { Icon(Icons.Filled.Computer, null) },
+            headlineContent = { Text("Computers & API") },
+            supportingContent = { Text("Control this phone from the CLI, scripts and AI agents") },
+            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+            modifier = Modifier.clickable(onClick = onOpenGateway),
+        )
+        ListItem(
+            leadingContent = { Icon(Icons.Filled.Shield, null) },
+            headlineContent = { Text("Permissions & activity") },
+            supportingContent = { Text("What automation may do, approvals, and the activity log") },
+            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+            modifier = Modifier.clickable(onClick = onOpenActivity),
+        )
     }
 }
 

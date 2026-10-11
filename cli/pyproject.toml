@@ -1,0 +1,29 @@
+[project]
+name = "opencell"
+version = "0.1.0"
+description = "CLI, Python client and MCP server for the OpenCell Android gateway (calls + SMS through your own phone)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27",
+    "typer>=0.12",
+    "websockets>=13",
+    "mcp>=2.3,<3",
+]
+
+[project.scripts]
+opencell = "opencell.cli:app"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/opencell"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -54,6 +54,9 @@ Every phase ends with a **test gate**: unit tests green, `assembleDebug` green, 
 end-to-end: `adb forward tcp:8787 tcp:8787` → `opencell sms send` → approval notification on emulator →
 approve → SMS sent; `opencell events` shows incoming `adb emu sms send`.
 
+**Phase 2 as built:** pairing uses a 6-digit one-time code shown on the phone (a QR is useless to a CLI);
+CLI config is `~/.config/opencell/config.json`; MCP uses the mcp 2.x `MCPServer` API.
+
 ## Phase 3 — AI core (text first)
 
 1. **AI providers**: `LlmProvider` interface; `OpenAiCompatibleLlm` (covers Ollama, OpenAI, Groq, OpenRouter,
