@@ -35,6 +35,12 @@ class SettingsStore(private val context: Context) {
         }
     }
 
+    suspend fun isGuideDone(): Boolean = context.dataStore.data.first()[GUIDE_DONE] ?: false
+
+    suspend fun setGuideDone() {
+        context.dataStore.edit { it[GUIDE_DONE] = true }
+    }
+
     suspend fun setGatewayEnabled(enabled: Boolean) {
         context.dataStore.edit { it[GATEWAY_ENABLED] = enabled }
     }
@@ -52,5 +58,6 @@ class SettingsStore(private val context: Context) {
         val DAILY_LIMIT = intPreferencesKey("policy_daily_limit")
         val KILL_SWITCH = booleanPreferencesKey("policy_kill_switch")
         val GATEWAY_ENABLED = booleanPreferencesKey("gateway_enabled")
+        val GUIDE_DONE = booleanPreferencesKey("guide_done")
     }
 }

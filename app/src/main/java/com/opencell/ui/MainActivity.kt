@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import com.opencell.OpenCellApp
 import com.opencell.gateway.GatewayService
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import com.opencell.ui.settings.setupStatus
 import com.opencell.ui.theme.OpenCellTheme
 
@@ -23,8 +24,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         pendingRoute.value = routeFor(intent)
-        val start = if (setupStatus(this).complete) Routes.CALLS else Routes.SETUP
         val container = (application as OpenCellApp).container
+        // One tiny DataStore read; blocking keeps the first frame on the right screen.
+        val guideDone = runBlocking { container.settings.isGuideDone() }
+        val start = when {
+            !guideDone -> Routes.GUIDE
+            setupStatus(this).complete -> Routes.CALLS
+            else -> Routes.SETUP
+        }
         // Foreground start is allowed here; this also revives the gateway if the system killed it.
         lifecycleScope.launch { if (container.settings.isGatewayEnabled()) GatewayService.start(this@MainActivity) }
         setContent {
@@ -34,6 +41,7 @@ class MainActivity : ComponentActivity() {
                     pendingRoute = pendingRoute.value,
                     onRouteConsumed = { pendingRoute.value = null },
                     placeCall = container.callPlacer::placeCall,
+                    onGuideFinished = { lifecycleScope.launch { container.settings.setGuideDone() } },
                 )
             }
         }

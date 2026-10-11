@@ -8,6 +8,16 @@ An open-source replacement for Android's Phone and SMS apps, with:
 
 No root. No VoIP number. No OpenCell cloud.
 
+## Download
+
+| | |
+|---|---|
+| 📱 **Phone app** | [**OpenCell APK**: latest release](https://github.com/UdaySoni32/OpenCell/releases/latest) (Android 11+) |
+| 💻 **Computer** (Windows / macOS / Linux / Pi) | `pipx install "git+https://github.com/UdaySoni32/OpenCell#subdirectory=cli"`, or the `.whl` from the release |
+| 📖 **Setup guide** | [docs/SETUP.md](docs/SETUP.md): install, permissions, AI, Shizuku, pairing a computer, troubleshooting |
+
+The app also walks you through setup the first time you open it.
+
 Design: [`docs/superpowers/specs/2026-10-11-opencell-v2-design.md`](docs/superpowers/specs/2026-10-11-opencell-v2-design.md) ·
 Build plan: [`docs/superpowers/plans/2026-10-11-opencell-v2-implementation.md`](docs/superpowers/plans/2026-10-11-opencell-v2-implementation.md)
 
@@ -64,7 +74,10 @@ Requirements: JDK 17+ (built with 25), Android SDK 36.
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Open the app → **Settings** → allow each item (default Phone app, default SMS app, permissions, notification access).
+Open the app and follow the setup guide.
+
+Release builds (`./gradlew :app:assembleRelease`) are shrunk with R8 and signed from a git-ignored
+`keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Without that file they're unsigned.
 
 ### Emulator testing
 

@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Computer
@@ -65,7 +66,13 @@ fun setupStatus(context: Context): SetupStatus {
 }
 
 @Composable
-fun SetupScreen(onOpenGateway: () -> Unit, onOpenActivity: () -> Unit, onOpenAssistant: () -> Unit, modifier: Modifier = Modifier) {
+fun SetupScreen(
+    onOpenGuide: () -> Unit,
+    onOpenGateway: () -> Unit,
+    onOpenActivity: () -> Unit,
+    onOpenAssistant: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     var refresh by remember { mutableIntStateOf(0) }
     val status = remember(refresh) { setupStatus(context) }
@@ -117,6 +124,13 @@ fun SetupScreen(onOpenGateway: () -> Unit, onOpenActivity: () -> Unit, onOpenAss
             supportingContent = { Text("What automation may do, approvals, and the activity log") },
             trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
             modifier = Modifier.clickable(onClick = onOpenActivity),
+        )
+        ListItem(
+            leadingContent = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) },
+            headlineContent = { Text("Setup guide") },
+            supportingContent = { Text("Walk through the setup steps again") },
+            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+            modifier = Modifier.clickable(onClick = onOpenGuide),
         )
     }
 }

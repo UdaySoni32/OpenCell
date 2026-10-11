@@ -34,6 +34,7 @@ import com.opencell.ui.contacts.ContactsScreen
 import com.opencell.ui.dialer.DialerScreen
 import com.opencell.ui.messages.ConversationScreen
 import com.opencell.ui.messages.ThreadsScreen
+import com.opencell.ui.onboarding.GuideScreen
 import com.opencell.ui.settings.ActivityScreen
 import com.opencell.ui.settings.AssistantScreen
 import com.opencell.ui.settings.MemoryScreen
@@ -47,6 +48,7 @@ object Routes {
     const val CONTACTS = "contacts"
     const val SETUP = "setup"
     const val GATEWAY = "gateway"
+    const val GUIDE = "guide"
     const val ACTIVITY = "activity"
     const val ASSISTANT = "assistant"
     const val MEMORY = "memory"
@@ -67,7 +69,13 @@ private val tabs = listOf(
 )
 
 @Composable
-fun OpenCellNavHost(startRoute: String, pendingRoute: String?, onRouteConsumed: () -> Unit, placeCall: (String) -> Boolean) {
+fun OpenCellNavHost(
+    startRoute: String,
+    pendingRoute: String?,
+    onRouteConsumed: () -> Unit,
+    placeCall: (String) -> Boolean,
+    onGuideFinished: () -> Unit,
+) {
     val nav = rememberNavController()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -120,8 +128,15 @@ fun OpenCellNavHost(startRoute: String, pendingRoute: String?, onRouteConsumed: 
             composable(Routes.CONTACTS) {
                 ContactsScreen(onCall = call, onMessage = { nav.navigate(Routes.conversation(null, it)) })
             }
+            composable(Routes.GUIDE) {
+                GuideScreen(onFinish = {
+                    onGuideFinished()
+                    nav.navigate(Routes.CALLS) { popUpTo(Routes.GUIDE) { inclusive = true } }
+                })
+            }
             composable(Routes.SETUP) {
                 SetupScreen(
+                    onOpenGuide = { nav.navigate(Routes.GUIDE) },
                     onOpenGateway = { nav.navigate(Routes.GATEWAY) },
                     onOpenActivity = { nav.navigate(Routes.ACTIVITY) },
                     onOpenAssistant = { nav.navigate(Routes.ASSISTANT) },

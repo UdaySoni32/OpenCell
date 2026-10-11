@@ -4,7 +4,7 @@ Control calls and SMS on your own Android phone running [OpenCell](../README.md)
 macOS or Windows.
 
 ```bash
-pipx install ./cli          # or: uv tool install ./cli
+pipx install "git+https://github.com/UdaySoni32/OpenCell#subdirectory=cli"   # or the .whl from a release
 opencell pair 100.101.102.103      # phone address from OpenCell > Settings > Computers & API; enter the 6-digit code
 opencell sms send +919876543210 "Running late"
 opencell call place +919876543210

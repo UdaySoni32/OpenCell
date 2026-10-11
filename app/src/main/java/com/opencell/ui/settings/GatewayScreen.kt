@@ -129,7 +129,10 @@ private fun PairingCard(code: String?, expiresAt: Long?, onStart: () -> Unit, on
         Column(Modifier.padding(16.dp)) {
             if (code == null || expiresAt == null || now > expiresAt) {
                 Text("Pair a computer", style = MaterialTheme.typography.titleMedium)
-                Text("Install the CLI with `pipx install opencell`, then run `opencell pair <address>`.", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "On your computer: pipx install \"git+https://github.com/UdaySoni32/OpenCell#subdirectory=cli\", then run: opencell pair <address>",
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 Spacer(Modifier.height(8.dp))
                 FilledTonalButton(onClick = onStart) { Text("Show pairing code") }
             } else {

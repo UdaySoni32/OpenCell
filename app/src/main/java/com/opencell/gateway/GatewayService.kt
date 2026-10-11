@@ -15,6 +15,9 @@ import com.opencell.R
 import com.opencell.ui.MainActivity
 import io.ktor.server.cio.CIO
 import io.ktor.server.cio.CIOApplicationEngine
+import io.ktor.server.application.ApplicationStarting
+import io.ktor.server.engine.applicationEngineEnvironment
+import io.ktor.server.engine.connector
 import io.ktor.server.engine.embeddedServer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,8 +36,16 @@ class GatewayService : Service() {
         val container = (application as OpenCellApp).container
         val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "dev"
         server = runCatching {
-            embeddedServer(CIO, port = PORT, host = "0.0.0.0") { gatewayModule(AndroidGatewayBackend(container, version)) }
-                .also { it.start(wait = false) }
+            val env = applicationEngineEnvironment {
+                connector {
+                    port = PORT
+                    host = "0.0.0.0"
+                }
+            }
+            // Installing the module from ApplicationStarting avoids Ktor 2's reflective module-by-name lookup,
+            // which breaks under R8 in release builds.
+            env.monitor.subscribe(ApplicationStarting) { app -> app.gatewayModule(AndroidGatewayBackend(container, version)) }
+            embeddedServer(CIO, env).also { it.start(wait = false) }
         }.onFailure {
             Log.e(TAG, "gateway failed to start", it)
             stopSelf()
