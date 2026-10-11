@@ -18,7 +18,34 @@ Build plan: [`docs/superpowers/plans/2026-10-11-opencell-v2-implementation.md`](
 | 1 | Dialer, in-call UI, SMS, contacts, unified call list | ✅ done |
 | 2 | Gateway API, permissions, `opencell` CLI/MCP ([cli/](cli/README.md)) | ✅ done |
 | 3 | AI (text): SMS agent, call screening, memory | ✅ done |
-| 4 | Voice agent (Shizuku / speaker / root modes) | in progress |
+| 4 | Voice agent (Shizuku / speaker modes, root via Sui) | ✅ done (needs real-device tuning) |
+
+### Voice calls
+
+Android does not let apps touch SIM-call audio, so the AI uses one of these, picked automatically:
+
+| Mode | Setup | How it works |
+|---|---|---|
+| **Shizuku** (best) | Install [Shizuku](https://shizuku.rikka.app), start it via Wireless debugging, tap *Allow Shizuku* in OpenCell | Hears the caller directly (`VOICE_DOWNLINK`), speaks through the speakerphone |
+| **Speaker** | Allow the microphone | Speakerphone + mic, half-duplex (lower quality, audible in the room) |
+| **Text** | nothing | Declines and continues by SMS (Phase 3 call screening) |
+
+Root users: install Sui (Magisk) — it speaks the Shizuku API. Use it from the in-call screen (**Let AI handle**),
+let it answer calls you miss, or have your code place AI calls:
+
+```bash
+opencell call place +919876543210 --goal "Ask if the clinic has a slot on Saturday morning"
+```
+
+Speech-to-text / text-to-speech run on the phone, on your own server (`opencell brain`: Whisper + Piper, see
+[cli/README.md](cli/README.md)) or a cloud API (OpenAI-compatible).
+
+**Check a phone quickly:** during a call, run
+`adb shell CLASSPATH=$(adb shell pm path com.opencell | cut -d: -f2) app_process /system/bin com.opencell.voice.shizuku.CallAudioProbe 3`
+— it prints whether shell-level call capture works on that device.
+
+Recording and AI-handled calls are regulated differently around the world (in India, the DPDP Act 2023 applies);
+"Learn from calls I answer" is off by default.
 
 ### AI assistant (Settings → AI assistant)
 

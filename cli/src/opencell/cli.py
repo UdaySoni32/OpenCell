@@ -93,11 +93,15 @@ def sms_list(limit: int = 20, as_json: bool = typer.Option(False, "--json")) -> 
 
 
 @call_app.command("place")
-def call_place(to: str, as_json: bool = typer.Option(False, "--json")) -> None:
+def call_place(
+    to: str,
+    goal: str = typer.Option(None, help="Let the phone's AI voice agent conduct the call toward this goal"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
     """Place a call from the phone (may need approval on the phone)."""
     with make_client() as client:
-        res = _run(lambda: client.place_call(to))
-    _out(res, as_json, _action_line(res, f"Call to {to}"))
+        res = _run(lambda: client.place_call(to, agent_goal=goal))
+    _out(res, as_json, _action_line(res, f"Call to {to}" + (" (AI agent)" if goal else "")))
 
 
 @call_app.command("list")
@@ -176,6 +180,20 @@ def events() -> None:
         raise typer.Exit(1) from e
     finally:
         client.close()
+
+
+@app.command()
+def brain(
+    host: str = typer.Option("0.0.0.0", help="Bind address (use your Tailscale IP to keep it private)"),
+    port: int = typer.Option(8788),
+    whisper_model: str = typer.Option("base", help="faster-whisper model size: tiny, base, small, medium, large-v3"),
+    piper_voice: str = typer.Option(..., help="Path to a Piper voice .onnx file"),
+    token: str = typer.Option(None, envvar="OPENCELL_BRAIN_TOKEN", help="Require this bearer token (set it as the API key in the phone)"),
+) -> None:
+    """Run the self-hosted speech server (Whisper + Piper) for the phone's voice agent."""
+    from opencell.brain import serve
+
+    serve(host, port, whisper_model, piper_voice, token)
 
 
 @app.command()

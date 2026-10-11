@@ -12,11 +12,20 @@ dependencies = [
     "mcp>=2.3,<3",
 ]
 
+[project.optional-dependencies]
+brain = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+    "faster-whisper>=1.0",
+    "piper-tts>=1.3",
+]
+
 [project.scripts]
 opencell = "opencell.cli:app"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "fastapi>=0.115", "python-multipart>=0.0.9"]
 
 [build-system]
 requires = ["hatchling"]

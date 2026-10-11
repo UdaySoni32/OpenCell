@@ -87,6 +87,11 @@ local Ollama at `10.0.2.2:11434`: `adb emu sms send` → AI draft approval → r
 **Test gate**: unit tests for turn loop with fake STT/TTS; mode detection tests; emulator: speaker-mode loop
 smoke test; pytest for brain endpoints with stubbed engines.
 
+**Phase 3/4 as built:** on-device LLM (MediaPipe/LiteRT) is deferred (needs a multi-GB model download); on-device
+STT uses Android 13+ `EXTRA_AUDIO_SOURCE`. Root mode = Shizuku API via Sui. Emulator results: shell-level
+`VOICE_CALL/DOWNLINK/UPLINK` capture works (CallAudioProbe); speaker-mode session, AI-placed goal call and
+auto-pickup verified; real conversations need real call audio (device).
+
 ## Pending on user hardware (cannot run on emulator)
 - Phase 0 spike on the real Jio phone: Shizuku call-audio capture, speakerphone injection, real notification
   fixtures for WhatsApp / Discord / Telegram.

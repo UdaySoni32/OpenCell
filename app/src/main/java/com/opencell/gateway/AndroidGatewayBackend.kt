@@ -35,8 +35,14 @@ class AndroidGatewayBackend(private val container: AppContainer, override val ve
     override suspend fun submitSms(device: Actor.Device, to: String, body: String) =
         container.actionExecutor.submit(ActionRequest(device, ActionType.SEND_SMS, to, body))
 
-    override suspend fun submitCall(device: Actor.Device, to: String) =
-        container.actionExecutor.submit(ActionRequest(device, ActionType.PLACE_CALL, to))
+    override suspend fun submitCall(device: Actor.Device, to: String, agentGoal: String?): ActionResult {
+        // Remember the goal first: with approval the call may connect long after this request returns.
+        agentGoal?.let { container.voiceController.rememberGoal(to, it) }
+        val body = agentGoal?.let { "AI voice agent goal: $it" }
+        val result = container.actionExecutor.submit(ActionRequest(device, ActionType.PLACE_CALL, to, body))
+        if (result is ActionResult.Denied || result is ActionResult.Failed) container.voiceController.forgetGoal(to)
+        return result
+    }
 
     override suspend fun submitCallAction(device: Actor.Device, callSid: String, action: String): ActionResult {
         val callId = Sids.callId(callSid) ?: return ActionResult.Failed("no such call")

@@ -35,9 +35,10 @@ def build_server(client: OpenCellClient) -> MCPServer:
         return _safe(lambda: client.messages(limit))
 
     @server.tool()
-    def place_call(to: str) -> dict:
-        """Start a normal phone call from the user's phone. Audio stays on the phone."""
-        return _safe(lambda: client.place_call(to))
+    def place_call(to: str, agent_goal: str | None = None) -> dict:
+        """Start a phone call from the user's phone. With `agent_goal` (e.g. "book a table for 2 at 8pm"),
+        the phone's AI voice agent conducts the call; otherwise the user talks."""
+        return _safe(lambda: client.place_call(to, agent_goal=agent_goal))
 
     @server.tool()
     def list_calls(limit: int = 20) -> list[dict] | dict:

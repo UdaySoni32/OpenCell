@@ -32,6 +32,7 @@ private val wireJson = Json {
 
 private const val MAX_LIMIT = 500
 private const val MAX_SMS_LENGTH = 1600
+private const val MAX_GOAL_LENGTH = 500
 
 /** HTTP + WebSocket API. Auth: `Authorization: Bearer <token>` (WebSocket may use `?token=`). */
 fun Application.gatewayModule(backend: GatewayBackend) {
@@ -88,9 +89,14 @@ fun Application.gatewayModule(backend: GatewayBackend) {
 
         post("/v1/Calls") {
             val device = call.authorized(backend, Scope.CALL_PLACE) ?: return@post
-            val to = call.receive<PlaceCallRequest>().to.trim()
+            val req = call.receive<PlaceCallRequest>()
+            val to = req.to.trim()
             if (!isPhoneNumber(to)) return@post call.respond(HttpStatusCode.BadRequest, ErrorDto("'to' must be a phone number"))
-            call.respondAction(backend.submitCall(device, to)) { null }
+            val goal = req.agentGoal?.trim()?.takeIf { it.isNotEmpty() }
+            if (goal != null && goal.length > MAX_GOAL_LENGTH) {
+                return@post call.respond(HttpStatusCode.BadRequest, ErrorDto("'agent_goal' must be at most $MAX_GOAL_LENGTH characters"))
+            }
+            call.respondAction(backend.submitCall(device, to, goal)) { null }
         }
 
         post("/v1/Calls/{sid}") {

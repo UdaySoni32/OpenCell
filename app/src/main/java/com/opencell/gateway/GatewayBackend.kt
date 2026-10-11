@@ -48,8 +48,9 @@ data class ApprovalDto(
 @Serializable
 data class SendMessageRequest(val to: String, val body: String)
 
+/** [agentGoal]: if set, the phone's AI voice agent conducts the call toward this goal once it connects. */
 @Serializable
-data class PlaceCallRequest(val to: String)
+data class PlaceCallRequest(val to: String, @SerialName("agent_goal") val agentGoal: String? = null)
 
 @Serializable
 data class CallActionRequest(val action: String)
@@ -93,7 +94,7 @@ interface GatewayBackend {
     fun activeCalls(): List<ActiveCallDto>
     suspend fun listApprovals(): List<ApprovalDto>
     suspend fun submitSms(device: Actor.Device, to: String, body: String): ActionResult
-    suspend fun submitCall(device: Actor.Device, to: String): ActionResult
+    suspend fun submitCall(device: Actor.Device, to: String, agentGoal: String? = null): ActionResult
     suspend fun submitCallAction(device: Actor.Device, callSid: String, action: String): ActionResult
     suspend fun decideApproval(device: Actor.Device, approvalId: Long, approve: Boolean): ApprovalDto?
     fun events(): Flow<EventDto>

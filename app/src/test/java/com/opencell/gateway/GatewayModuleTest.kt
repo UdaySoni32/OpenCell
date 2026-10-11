@@ -42,7 +42,11 @@ private class FakeBackend : GatewayBackend {
         sent += to to body
         return smsResult
     }
-    override suspend fun submitCall(device: Actor.Device, to: String) = ActionResult.Done(null)
+    var lastGoal: String? = null
+    override suspend fun submitCall(device: Actor.Device, to: String, agentGoal: String?): ActionResult {
+        lastGoal = agentGoal
+        return ActionResult.Done(null)
+    }
     override suspend fun submitCallAction(device: Actor.Device, callSid: String, action: String) = ActionResult.Failed("no such call")
     override suspend fun decideApproval(device: Actor.Device, approvalId: Long, approve: Boolean) = null
     override fun events(): Flow<EventDto> = emptyFlow()
@@ -146,6 +150,23 @@ class GatewayModuleTest {
             setBody("""{"action":"hangup"}""")
         }
         assertEquals(HttpStatusCode.UnprocessableEntity, hangup.status)
+    }
+
+    @Test
+    fun `place call passes agent goal and rejects oversized goals`() = test {
+        val ok = client.post("/v1/Calls") {
+            header("Authorization", "Bearer full")
+            contentType(ContentType.Application.Json)
+            setBody("""{"to":"+15550001111","agent_goal":"Book a table for 2 at 8pm"}""")
+        }
+        assertEquals(HttpStatusCode.Created, ok.status)
+        assertEquals("Book a table for 2 at 8pm", backend.lastGoal)
+        val tooLong = client.post("/v1/Calls") {
+            header("Authorization", "Bearer full")
+            contentType(ContentType.Application.Json)
+            setBody("""{"to":"+15550001111","agent_goal":"${"x".repeat(501)}"}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, tooLong.status)
     }
 
     @Test

@@ -77,8 +77,10 @@ class OpenCellClient:
     def active_calls(self) -> list[dict]:
         return self._request("GET", "/v1/Calls/Active")
 
-    def place_call(self, to: str) -> dict:
-        return self._request("POST", "/v1/Calls", json={"to": to})
+    def place_call(self, to: str, agent_goal: str | None = None) -> dict:
+        """With ``agent_goal`` the phone's AI voice agent talks on the call toward that goal."""
+        payload = {"to": to} | ({"agent_goal": agent_goal} if agent_goal else {})
+        return self._request("POST", "/v1/Calls", json=payload)
 
     def call_action(self, sid: str, action: str) -> dict:
         if action not in {"answer", "reject", "hangup"}:

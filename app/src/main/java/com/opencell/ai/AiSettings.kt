@@ -23,6 +23,25 @@ enum class ProviderPreset(val label: String, val config: ProviderConfig, val nee
     GROQ("Groq", ProviderConfig(ProviderKind.OPENAI_COMPATIBLE, "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"), true),
 }
 
+enum class SpeechKind { ON_DEVICE, OPENAI_COMPATIBLE }
+
+/** [model] is the STT/TTS model; [voice] only matters for TTS. Ignored when [kind] is ON_DEVICE. */
+data class SpeechConfig(val kind: SpeechKind = SpeechKind.ON_DEVICE, val baseUrl: String = "", val model: String = "", val voice: String = "")
+
+enum class SpeechPreset(val label: String, val stt: SpeechConfig, val tts: SpeechConfig) {
+    ON_DEVICE("On this phone", SpeechConfig(), SpeechConfig()),
+    BRAIN(
+        "Your server (opencell brain)",
+        SpeechConfig(SpeechKind.OPENAI_COMPATIBLE, "http://100.64.0.1:8788/v1", "whisper"),
+        SpeechConfig(SpeechKind.OPENAI_COMPATIBLE, "http://100.64.0.1:8788/v1", "piper", "default"),
+    ),
+    OPENAI(
+        "OpenAI",
+        SpeechConfig(SpeechKind.OPENAI_COMPATIBLE, "https://api.openai.com/v1", "whisper-1"),
+        SpeechConfig(SpeechKind.OPENAI_COMPATIBLE, "https://api.openai.com/v1", "tts-1", "alloy"),
+    ),
+}
+
 data class AiSettings(
     val primary: ProviderConfig? = null,
     val fallback: ProviderConfig? = null,
@@ -35,6 +54,13 @@ data class AiSettings(
     /** Extract facts from SMS conversations into memory. */
     val learnFromSms: Boolean = false,
     val userName: String = "",
+    val stt: SpeechConfig = SpeechConfig(),
+    val tts: SpeechConfig = SpeechConfig(),
+    /** Let the AI answer calls you don't pick up within [autoPickupSeconds]. */
+    val autoPickup: Boolean = false,
+    val autoPickupSeconds: Int = 20,
+    /** Transcribe calls you answer yourself (Shizuku mode only) and learn facts from them. */
+    val learnFromCalls: Boolean = false,
 )
 
 private val Context.aiStore by preferencesDataStore(name = "ai_settings")
@@ -57,8 +83,16 @@ class AiSettingsStore(private val context: Context, private val secrets: Keystor
             prefs[SCREEN_CALLS] = next.screenUnknownCalls
             prefs[LEARN_SMS] = next.learnFromSms
             prefs[USER_NAME] = next.userName.trim()
+            prefs.putSpeech("stt", next.stt)
+            prefs.putSpeech("tts", next.tts)
+            prefs[AUTO_PICKUP] = next.autoPickup
+            prefs[AUTO_PICKUP_SECONDS] = next.autoPickupSeconds.coerceIn(5, 60).toString()
+            prefs[LEARN_CALLS] = next.learnFromCalls
         }
     }
+
+    /** Speech engines for a voice session; on-device engines need the Android context, so the caller builds those. */
+    fun speechKey(slot: String): String? = secrets.get("ai_key_$slot")
 
     suspend fun setInstructions(text: String) {
         context.aiStore.edit { it[INSTRUCTIONS] = text.take(MAX_INSTRUCTIONS) }
@@ -90,7 +124,29 @@ class AiSettingsStore(private val context: Context, private val secrets: Keystor
         screenUnknownCalls = this[SCREEN_CALLS] ?: false,
         learnFromSms = this[LEARN_SMS] ?: false,
         userName = this[USER_NAME].orEmpty(),
+        stt = speech("stt"),
+        tts = speech("tts"),
+        autoPickup = this[AUTO_PICKUP] ?: false,
+        autoPickupSeconds = this[AUTO_PICKUP_SECONDS]?.toIntOrNull() ?: 20,
+        learnFromCalls = this[LEARN_CALLS] ?: false,
     )
+
+    private fun Preferences.speech(slot: String): SpeechConfig {
+        val kind = this[stringPreferencesKey("${slot}_kind")]?.let { runCatching { SpeechKind.valueOf(it) }.getOrNull() } ?: SpeechKind.ON_DEVICE
+        return SpeechConfig(
+            kind,
+            this[stringPreferencesKey("${slot}_url")].orEmpty(),
+            this[stringPreferencesKey("${slot}_model")].orEmpty(),
+            this[stringPreferencesKey("${slot}_voice")].orEmpty(),
+        )
+    }
+
+    private fun androidx.datastore.preferences.core.MutablePreferences.putSpeech(slot: String, c: SpeechConfig) {
+        this[stringPreferencesKey("${slot}_kind")] = c.kind.name
+        this[stringPreferencesKey("${slot}_url")] = c.baseUrl.trim()
+        this[stringPreferencesKey("${slot}_model")] = c.model.trim()
+        this[stringPreferencesKey("${slot}_voice")] = c.voice.trim()
+    }
 
     private fun Preferences.provider(slot: String): ProviderConfig? {
         val kind = this[stringPreferencesKey("${slot}_kind")]?.let { runCatching { ProviderKind.valueOf(it) }.getOrNull() } ?: return null
@@ -116,5 +172,8 @@ class AiSettingsStore(private val context: Context, private val secrets: Keystor
         val SCREEN_CALLS = booleanPreferencesKey("screen_unknown_calls")
         val LEARN_SMS = booleanPreferencesKey("learn_from_sms")
         val USER_NAME = stringPreferencesKey("user_name")
+        val AUTO_PICKUP = booleanPreferencesKey("auto_pickup")
+        val AUTO_PICKUP_SECONDS = stringPreferencesKey("auto_pickup_seconds")
+        val LEARN_CALLS = booleanPreferencesKey("learn_from_calls")
     }
 }

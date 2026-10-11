@@ -53,7 +53,9 @@ class AssistantViewModel(private val container: AppContainer) : ViewModel() {
     val instructions = store.instructions.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
     val testResult = MutableStateFlow<String?>(null)
 
+    val voice = container.voiceController
     fun hasKey(slot: String) = store.hasKey(slot)
+    fun saveKey(slot: String, key: String) = store.setKey(slot, key)
     fun update(transform: (AiSettings) -> AiSettings) = viewModelScope.launch { store.update(transform) }
     fun saveProvider(slot: String, config: ProviderConfig?, key: String?) = viewModelScope.launch {
         store.update { if (slot == "primary") it.copy(primary = config) else it.copy(fallback = config) }
@@ -99,6 +101,14 @@ fun AssistantScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
                 vm.update { it.copy(screenUnknownCalls = on) }
             }
             Toggle("Learn from my SMS", "Remember facts from conversations with contacts", s.learnFromSms) { on -> vm.update { it.copy(learnFromSms = on) } }
+
+            VoiceSettingsSection(
+                settings = s,
+                voice = vm.voice,
+                hasKey = vm::hasKey,
+                onUpdate = { transform -> vm.update(transform) },
+                onSaveKey = vm::saveKey,
+            )
 
             Text("About you", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             var name by rememberSaveable(s.userName) { mutableStateOf(s.userName) }

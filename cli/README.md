@@ -21,6 +21,21 @@ Reaching the phone:
 Outbound actions obey the phone's permission settings: by default you approve each one on the phone, and the CLI
 prints `waiting for approval`.
 
+AI-placed calls: `opencell call place +91… --goal "Book a table for two at 8pm"` — once the call connects, the
+phone's AI voice agent talks toward the goal (after you approve it on the phone, by default).
+
+## Speech server (`opencell brain`)
+
+Self-hosted speech for the phone's voice agent, speaking the OpenAI audio API:
+
+```bash
+pipx install "./cli[brain]"
+opencell brain --piper-voice ~/voices/en_US-amy-medium.onnx --whisper-model small --token my-secret
+```
+
+In OpenCell → Settings → AI assistant → Voice calls, choose **Your server (opencell brain)**, set the URL to
+`http://<computer-tailscale-ip>:8788/v1` and the API key to your token. Use Ollama on the same box for the LLM.
+
 ## MCP
 
 Add to your MCP client config:

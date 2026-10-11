@@ -41,6 +41,25 @@ object PromptBuilder {
         return AgentPrompt(system, history.takeLast(MAX_HISTORY).toMessages())
     }
 
+    /** System prompt for a spoken call. [goal] is set for calls the AI places; null when it answers for the user. */
+    fun voiceCall(userName: String, instructions: String, facts: List<MemoryFact>, contactLabel: String, goal: String?, endMarker: String): String {
+        val owner = userName.ifBlank { "the phone's owner" }
+        return buildString {
+            if (goal == null) {
+                appendLine("You are $owner's assistant, answering a phone call from $contactLabel because $owner is unavailable. Find out who is calling and why, offer to pass on a message, and be brief.")
+            } else {
+                appendLine("You are $owner's assistant, making a phone call to $contactLabel on $owner's behalf. Your goal: ${goal.trim()}")
+            }
+            appendLine("You are speaking out loud: use short, natural sentences, no lists, no emojis, no markdown. Say you are an AI assistant if asked.")
+            appendLine("Never share codes, passwords, bank or ID details, and never agree to payments or commitments $owner has not approved.")
+            appendLine("When the conversation is finished, say a short goodbye and end your reply with $endMarker.")
+            if (instructions.isNotBlank()) appendLine("$owner's instructions:\n${instructions.trim()}")
+            val (aboutUser, aboutContact) = facts.partition { it.contactKey == null }
+            if (aboutUser.isNotEmpty()) appendLine("What you know about $owner:\n" + aboutUser.joinToString("\n") { "- ${it.text}" })
+            if (aboutContact.isNotEmpty()) appendLine("What you know about $contactLabel:\n" + aboutContact.joinToString("\n") { "- ${it.text}" })
+        }.trim()
+    }
+
     fun factExtraction(contactLabel: String, history: List<ThreadLine>): AgentPrompt {
         val system = "You maintain a memory for a phone assistant. From the SMS conversation, list durable facts worth remembering " +
             "(names, relationships, preferences, recurring plans). Skip one-off chit-chat, codes, passwords and financial details. " +

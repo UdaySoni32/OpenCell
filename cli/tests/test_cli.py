@@ -66,6 +66,16 @@ def test_call_commands(patched):
     assert "done" in runner.invoke(cli.app, ["call", "place", "+1555"]).output
 
 
+def test_call_with_agent_goal(patched):
+    config.save(config.Config("http://phone:8787", "oc_test"))
+    res = runner.invoke(cli.app, ["call", "place", "+1555", "--goal", "Book a table for 2"])
+    assert res.exit_code == 0, res.output
+    assert "(AI agent)" in res.output
+    assert patched.calls[-1] == {"to": "+1555", "agent_goal": "Book a table for 2"}
+    runner.invoke(cli.app, ["call", "place", "+1666"])
+    assert patched.calls[-1] == {"to": "+1666"}
+
+
 def test_env_overrides_config(monkeypatch):
     monkeypatch.setenv("OPENCELL_URL", "http://x:1")
     monkeypatch.setenv("OPENCELL_TOKEN", "t")

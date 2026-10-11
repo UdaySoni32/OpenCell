@@ -42,7 +42,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
 import com.opencell.OpenCellApp
+import com.opencell.voice.Speaker
+import com.opencell.voice.VoiceSession
 import com.opencell.ui.dialer.DialPad
 import com.opencell.ui.formatDuration
 import com.opencell.ui.theme.OpenCellTheme
@@ -60,9 +66,17 @@ class InCallActivity : ComponentActivity() {
             OpenCellTheme {
                 val active by calls.activeCalls.collectAsState()
                 val audio by calls.audio.collectAsState()
+                val voice = (application as OpenCellApp).container.voiceController
+                val session by voice.session.collectAsState()
                 val call = active.firstOrNull { it.state == CallState.RINGING } ?: active.firstOrNull()
                 LaunchedEffect(active.isEmpty()) { if (active.isEmpty()) finish() }
-                if (call != null) InCallScreen(call, audio, calls)
+                if (call != null) {
+                    InCallScreen(call, audio, calls) {
+                        AiControls(call, session, onHandle = {
+                            voice.handle(call.id)?.let { msg -> Toast.makeText(this, "Can't hand over: $msg", Toast.LENGTH_LONG).show() }
+                        }, onStop = voice::stop)
+                    }
+                }
             }
         }
     }
@@ -84,7 +98,33 @@ class InCallActivity : ComponentActivity() {
 }
 
 @Composable
-private fun InCallScreen(call: ActiveCall, audio: AudioUi, calls: CallManager) {
+private fun AiControls(call: ActiveCall, session: VoiceSession?, onHandle: () -> Unit, onStop: () -> Unit) {
+    if (call.state != CallState.ACTIVE) return
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+        when {
+            session == null -> FilledTonalButton(onClick = onHandle) {
+                Icon(Icons.Filled.AutoAwesome, null)
+                Text("  Let AI handle")
+            }
+            session.listenOnly -> Text("AI is listening to learn (turn off in Settings)", style = MaterialTheme.typography.labelSmall)
+            else -> {
+                Text("AI is on the call · ${session.mode.name.lowercase()} mode", style = MaterialTheme.typography.titleMedium)
+                session.lines.lastOrNull()?.let {
+                    Text(
+                        (if (it.speaker == Speaker.THEM) "Caller: " else "AI: ") + it.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 3,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+                OutlinedButton(onClick = onStop) { Text("Take back the call") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InCallScreen(call: ActiveCall, audio: AudioUi, calls: CallManager, aiControls: @Composable () -> Unit) {
     var showKeypad by remember { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.safeDrawingPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -100,6 +140,7 @@ private fun InCallScreen(call: ActiveCall, audio: AudioUi, calls: CallManager) {
                     RoundAction(Icons.Filled.Call, "Answer", Color(0xFF1E8E3E)) { calls.answer(call.id) }
                 }
             } else {
+                aiControls()
                 if (showKeypad) {
                     DialPad(onKey = { calls.playDtmf(call.id, it) })
                     Spacer(Modifier.height(24.dp))

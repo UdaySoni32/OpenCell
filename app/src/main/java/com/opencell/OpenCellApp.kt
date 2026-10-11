@@ -21,6 +21,7 @@ import com.opencell.policy.ActionExecutor
 import com.opencell.policy.ActionHandlers
 import com.opencell.policy.ActionType
 import com.opencell.policy.ApprovalNotifier
+import com.opencell.policy.ApprovalStatus
 import com.opencell.sms.SmsNotifier
 import com.opencell.sms.SmsRepository
 import com.opencell.telecom.ActiveCall
@@ -28,6 +29,7 @@ import com.opencell.telecom.CallManager
 import com.opencell.telecom.CallState
 import com.opencell.telecom.CallPlacer
 import com.opencell.telecom.IncomingCallNotifier
+import com.opencell.voice.VoiceController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -90,6 +92,7 @@ class AppContainer(context: Context) {
             },
             prompter = ApprovalNotifier(appContext),
             onApprovalChanged = {
+                if (it.status == ApprovalStatus.DENIED && it.action == ActionType.PLACE_CALL) voiceController.forgetGoal(it.target)
                 _events.tryEmit(AppEvent.ApprovalChanged(it.id, it.status.name.lowercase(), it.action.name.lowercase(), it.target, System.currentTimeMillis()))
             },
         )
@@ -107,6 +110,19 @@ class AppContainer(context: Context) {
             memory = database.memoryDao(),
             executor = actionExecutor,
             policy = settings::currentPolicy,
+            notifier = AssistantNotifications(appContext),
+        )
+    }
+
+    val voiceController: VoiceController by lazy {
+        VoiceController(
+            context = appContext,
+            scope = appScope,
+            ai = aiSettings,
+            calls = callManager,
+            executor = actionExecutor,
+            contacts = contactsRepository,
+            memory = database.memoryDao(),
             notifier = AssistantNotifications(appContext),
         )
     }
@@ -138,6 +154,7 @@ class AppContainer(context: Context) {
             current.values.filter { previous[it.id]?.state != it.state }.forEach {
                 _events.tryEmit(AppEvent.CallStateChanged(it.id, it.number, it.state.name.lowercase(), it.isIncoming, now))
                 if (it.isIncoming && it.state == CallState.RINGING) launchAssistant("call") { onRingingCall(it.id, it.number) }
+                voiceController.onCallState(it.id, it.number, it.state, it.isIncoming)
             }
             (previous.keys - current.keys).forEach { id ->
                 val gone = previous.getValue(id)

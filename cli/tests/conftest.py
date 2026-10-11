@@ -14,6 +14,7 @@ class FakeGateway:
     def __init__(self) -> None:
         self.token = "oc_test"
         self.sent: list[dict] = []
+        self.calls: list[dict] = []
         self.sms_status = "pending_approval"
 
     def handler(self, request: httpx.Request) -> httpx.Response:
@@ -38,6 +39,7 @@ class FakeGateway:
                 return httpx.Response(201, json={"status": "done", "sid": "SM9"})
             return httpx.Response(202, json={"status": "pending_approval", "approval_sid": "AP1"})
         if path == "/v1/Calls" and method == "POST":
+            self.calls.append(json.loads(request.content))
             return httpx.Response(201, json={"status": "done"})
         if path == "/v1/Calls" and method == "GET":
             return httpx.Response(200, json=[{"sid": "app-1", "source": "whatsapp", "kind": "missed", "peer_name": "Riya", "peer_number": None, "date_created": 0, "duration": 0}])
