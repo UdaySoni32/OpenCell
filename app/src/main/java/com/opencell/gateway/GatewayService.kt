@@ -39,7 +39,7 @@ class GatewayService : Service() {
             val env = applicationEngineEnvironment {
                 connector {
                     port = PORT
-                    host = "0.0.0.0"
+                    host = "127.0.0.1"
                 }
             }
             // Installing the module from ApplicationStarting avoids Ktor 2's reflective module-by-name lookup,
