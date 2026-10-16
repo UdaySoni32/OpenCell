@@ -51,7 +51,7 @@ private class ScriptedStt(vararg texts: String) : SttEngine {
 
 private object LengthTts : TtsEngine {
     override val label = "fake-tts"
-    override fun synthesize(text: String) = Pcm(ShortArray(text.length))
+    override suspend fun synthesize(text: String) = Pcm(ShortArray(text.length))
 }
 
 private class ScriptedLlm(vararg replies: String) : LlmProvider {
