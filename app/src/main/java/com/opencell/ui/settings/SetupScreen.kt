@@ -29,10 +29,8 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -74,14 +72,14 @@ fun SetupScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var refresh by remember { mutableIntStateOf(0) }
-    val status = remember(refresh) { setupStatus(context) }
+    val refresh = remember { mutableIntStateOf(0) }
+    val status = remember(refresh.intValue) { setupStatus(context) }
     LifecycleResumeEffect(Unit) {
-        refresh++
+        refresh.intValue++
         onPauseOrDispose { }
     }
-    val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { refresh++ }
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
+    val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { refresh.intValue++ }
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh.intValue++ }
     val roles = context.getSystemService(RoleManager::class.java)
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
