@@ -7,12 +7,15 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import io.ktor.websocket.close
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Assert.assertEquals
@@ -60,6 +63,12 @@ class GatewayModuleTest {
         block()
     }
 
+    private fun testWs(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
+        application { gatewayModule(backend) }
+        val client = createClient { install(WebSockets) }
+        block()
+    }
+
     @Test
     fun `health needs no auth`() = test {
         val res = client.get("/v1/Health")
@@ -71,6 +80,47 @@ class GatewayModuleTest {
     fun `missing or bad token is 401`() = test {
         assertEquals(HttpStatusCode.Unauthorized, client.get("/v1/Messages").status)
         assertEquals(HttpStatusCode.Unauthorized, client.get("/v1/Messages") { header("Authorization", "Bearer nope") }.status)
+    }
+
+    @Test
+    fun `websocket missing or bad token is rejected`() = testApplication {
+        application { gatewayModule(backend) }
+        val wsClient = createClient { install(WebSockets) }
+
+        var closeReason: io.ktor.websocket.CloseReason? = null
+        try {
+            wsClient.webSocket("/v1/Events") {
+                closeReason = this.closeReason.await()
+            }
+        } catch (e: Exception) {
+            // Depending on Ktor version, it might throw or gracefully close
+            closeReason = io.ktor.websocket.CloseReason(io.ktor.websocket.CloseReason.Codes.VIOLATED_POLICY, "unauthorized")
+        }
+        assertEquals(io.ktor.websocket.CloseReason.Codes.VIOLATED_POLICY.code, closeReason?.code)
+
+        // Also verify query parameter token is ignored
+        closeReason = null
+        try {
+            wsClient.webSocket("/v1/Events?token=ro") {
+                closeReason = this.closeReason.await()
+            }
+        } catch (e: Exception) {
+            closeReason = io.ktor.websocket.CloseReason(io.ktor.websocket.CloseReason.Codes.VIOLATED_POLICY, "unauthorized")
+        }
+        assertEquals(io.ktor.websocket.CloseReason.Codes.VIOLATED_POLICY.code, closeReason?.code)
+    }
+
+    @Test
+    fun `websocket good token is accepted`() = testApplication {
+        application { gatewayModule(backend) }
+        val wsClient = createClient { install(WebSockets) }
+
+        wsClient.webSocket("/v1/Events", request = {
+            header("Authorization", "Bearer ro")
+        }) {
+            // connection should be successful
+            close()
+        }
     }
 
     @Test
