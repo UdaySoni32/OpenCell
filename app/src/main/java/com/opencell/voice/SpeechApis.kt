@@ -7,6 +7,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.net.HttpURLConnection
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.net.URI
 import java.util.UUID
 
@@ -96,7 +98,7 @@ class OpenAiCompatibleTts(
 ) : TtsEngine {
     override val label = "$model/$voice (text-to-speech)"
 
-    override fun synthesize(text: String): Pcm {
+    override suspend fun synthesize(text: String): Pcm = withContext(Dispatchers.IO) {
         val json = buildJsonObject {
             put("model", model)
             put("input", text)
@@ -105,6 +107,6 @@ class OpenAiCompatibleTts(
         }.toString()
         val (code, body) = http.postJson(baseUrl.trimEnd('/') + "/audio/speech", authHeaders(apiKey), json)
         if (code !in 200..299) throw LlmException("text-to-speech HTTP $code: ${String(body).take(200)}")
-        return runCatching { Wav.decode(body) }.getOrElse { throw LlmException("text-to-speech returned invalid audio", it) }
+        runCatching { Wav.decode(body) }.getOrElse { throw LlmException("text-to-speech returned invalid audio", it) }
     }
 }

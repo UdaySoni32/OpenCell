@@ -3,6 +3,7 @@ package com.opencell.voice
 import com.opencell.ai.LlmException
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -53,13 +54,13 @@ class SpeechTest {
     }
 
     @Test
-    fun `tts asks for wav and decodes it`() {
+    fun `tts asks for wav and decodes it`() = runBlocking {
         val audio = Wav.encode(Pcm(ShortArray(480), 24_000))
         val http = FakeHttp(200, audio)
         val pcm = OpenAiCompatibleTts("https://api.openai.com/v1", "tts-1", "alloy", "k", http).synthesize("Hi")
         assertEquals(24_000, pcm.sampleRate)
         assertTrue(http.json.contains("\"response_format\":\"wav\""))
-        assertThrows(LlmException::class.java) { OpenAiCompatibleTts("http://x", "m", "v", null, FakeHttp(500, ByteArray(0))).synthesize("Hi") }
+        assertThrows(LlmException::class.java) { runBlocking { OpenAiCompatibleTts("http://x", "m", "v", null, FakeHttp(500, ByteArray(0))).synthesize("Hi") } }
     }
 
     @Test
