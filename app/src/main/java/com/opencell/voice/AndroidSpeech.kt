@@ -20,6 +20,8 @@ import java.nio.ByteOrder
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicReference
 
 /** On-device text-to-speech (Android's TTS engine), rendered to PCM so the agent controls playback. */
@@ -35,7 +37,7 @@ class AndroidTts(private val context: Context) : TtsEngine {
         }
     }
 
-    override fun synthesize(text: String): Pcm {
+    override suspend fun synthesize(text: String): Pcm = withContext(Dispatchers.IO) {
         if (!ready.await(INIT_TIMEOUT_S, TimeUnit.SECONDS)) throw LlmException("on-device TTS did not start")
         val engine = tts ?: throw LlmException("on-device TTS unavailable")
         val file = File.createTempFile("tts", ".wav", context.cacheDir)
@@ -53,7 +55,7 @@ class AndroidTts(private val context: Context) : TtsEngine {
             if (engine.synthesizeToFile(text, Bundle(), file, id) != TextToSpeech.SUCCESS) throw LlmException("on-device TTS rejected the text")
             if (!done.await(SYNTH_TIMEOUT_S, TimeUnit.SECONDS)) throw LlmException("on-device TTS timed out")
             failed.get()?.let { throw LlmException(it) }
-            return Wav.decode(file.readBytes())
+            Wav.decode(file.readBytes())
         } finally {
             file.delete()
         }
