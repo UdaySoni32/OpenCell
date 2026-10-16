@@ -32,11 +32,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -64,10 +62,13 @@ class InCallActivity : ComponentActivity() {
         handleIntent(intent)
         setContent {
             OpenCellTheme {
-                val active by calls.activeCalls.collectAsState()
-                val audio by calls.audio.collectAsState()
+                val activeState = calls.activeCalls.collectAsState()
+                val active = activeState.value
+                val audioState = calls.audio.collectAsState()
+                val audio = audioState.value
                 val voice = (application as OpenCellApp).container.voiceController
-                val session by voice.session.collectAsState()
+                val sessionState = voice.session.collectAsState()
+                val session = sessionState.value
                 val call = active.firstOrNull { it.state == CallState.RINGING } ?: active.firstOrNull()
                 LaunchedEffect(active.isEmpty()) { if (active.isEmpty()) finish() }
                 if (call != null) {
@@ -125,7 +126,7 @@ private fun AiControls(call: ActiveCall, session: VoiceSession?, onHandle: () ->
 
 @Composable
 private fun InCallScreen(call: ActiveCall, audio: AudioUi, calls: CallManager, aiControls: @Composable () -> Unit) {
-    var showKeypad by remember { mutableStateOf(false) }
+    val showKeypadState = remember { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.safeDrawingPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(48.dp))
@@ -141,7 +142,7 @@ private fun InCallScreen(call: ActiveCall, audio: AudioUi, calls: CallManager, a
                 }
             } else {
                 aiControls()
-                if (showKeypad) {
+                if (showKeypadState.value) {
                     DialPad(onKey = { calls.playDtmf(call.id, it) })
                     Spacer(Modifier.height(24.dp))
                 }
@@ -149,7 +150,7 @@ private fun InCallScreen(call: ActiveCall, audio: AudioUi, calls: CallManager, a
                     Toggle(Icons.Filled.MicOff, "Mute", audio.isMuted) { calls.setMuted(!audio.isMuted) }
                     Toggle(Icons.AutoMirrored.Filled.VolumeUp, "Speaker", audio.isSpeaker) { calls.setSpeaker(!audio.isSpeaker) }
                     Toggle(Icons.Filled.Pause, "Hold", call.state == CallState.HOLDING) { calls.toggleHold(call.id) }
-                    Toggle(Icons.Filled.Dialpad, "Keypad", showKeypad) { showKeypad = !showKeypad }
+                    Toggle(Icons.Filled.Dialpad, "Keypad", showKeypadState.value) { showKeypadState.value = !showKeypadState.value }
                 }
                 Spacer(Modifier.height(32.dp))
                 RoundAction(Icons.Filled.CallEnd, "Hang up", MaterialTheme.colorScheme.error) { calls.hangup(call.id) }
@@ -161,10 +162,10 @@ private fun InCallScreen(call: ActiveCall, audio: AudioUi, calls: CallManager, a
 
 @Composable
 private fun CallStatusText(call: ActiveCall) {
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val nowState = remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(call.connectedAtMillis) {
         while (call.connectedAtMillis != null) {
-            now = System.currentTimeMillis()
+            nowState.longValue = System.currentTimeMillis()
             delay(1_000)
         }
     }
@@ -173,7 +174,7 @@ private fun CallStatusText(call: ActiveCall) {
         CallState.DIALING, CallState.CONNECTING -> "Calling…"
         CallState.HOLDING -> "On hold"
         CallState.DISCONNECTED -> "Call ended"
-        CallState.ACTIVE -> call.connectedAtMillis?.let { formatDuration((now - it) / 1000) } ?: "Connected"
+        CallState.ACTIVE -> call.connectedAtMillis?.let { formatDuration((nowState.longValue - it) / 1000) } ?: "Connected"
     }
     Text(text, style = MaterialTheme.typography.labelSmall)
 }
