@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
-import android.telephony.SmsMessage as PduMessage
 import com.opencell.OpenCellApp
 
 /** Sent / delivered results for messages queued by [SmsRepository.send]. */
@@ -22,7 +21,7 @@ class SmsStatusReceiver : BroadcastReceiver() {
             ACTION_DELIVERED -> if (isLastPart) {
                 val pdu = intent.getByteArrayExtra("pdu")
                 val format = intent.getStringExtra("format")
-                val status = pdu?.let { PduMessage.createFromPdu(it, format)?.status } ?: Telephony.Sms.STATUS_COMPLETE
+                val status = pdu?.let { android.telephony.SmsMessage.createFromPdu(it, format)?.status } ?: Telephony.Sms.STATUS_COMPLETE
                 // TP-Status: 0x40 and above is a permanent failure; lower values mean delivered or still trying.
                 repo.markStatus(uri, if (status >= 0x40) Telephony.Sms.STATUS_FAILED else Telephony.Sms.STATUS_COMPLETE)
             }
