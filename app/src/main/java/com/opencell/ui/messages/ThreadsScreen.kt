@@ -36,16 +36,29 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+
+import android.telephony.PhoneNumberUtils
 
 data class ThreadUi(val thread: SmsThread, val name: String?) {
     val title: String get() = name ?: thread.address
 }
 
 class ThreadsViewModel(container: AppContainer) : ViewModel() {
-    val threads: StateFlow<List<ThreadUi>> = container.smsRepository.observeThreads()
-        .map { list -> list.map { ThreadUi(it, container.contactsRepository.nameFor(it.address)) } }
+    val threads: StateFlow<List<ThreadUi>> = combine(
+        container.smsRepository.observeThreads(),
+        container.contactsRepository.observeAll()
+    ) { threads, contacts ->
+        val contactsBySuffix = contacts.groupBy { it.number.filter(Char::isDigit).takeLast(7) }
+        threads.map { t ->
+            val suffix = t.address.filter(Char::isDigit).takeLast(7)
+            val candidates = contactsBySuffix[suffix] ?: emptyList()
+            val match = candidates.firstOrNull { PhoneNumberUtils.compare(it.number, t.address) }
+            ThreadUi(t, match?.name)
+        }
+    }
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 }
