@@ -34,7 +34,7 @@ private const val MAX_LIMIT = 500
 private const val MAX_SMS_LENGTH = 1600
 private const val MAX_GOAL_LENGTH = 500
 
-/** HTTP + WebSocket API. Auth: `Authorization: Bearer <token>` (WebSocket may use `?token=`). */
+/** HTTP + WebSocket API. Auth: `Authorization: Bearer <token>`. */
 fun Application.gatewayModule(backend: GatewayBackend) {
     install(ContentNegotiation) { json(wireJson) }
     install(WebSockets)
@@ -125,7 +125,7 @@ fun Application.gatewayModule(backend: GatewayBackend) {
         }
 
         webSocket("/v1/Events") {
-            val token = call.bearerToken() ?: call.request.queryParameters["token"]
+            val token = call.bearerToken()
             val device = token?.let { backend.authenticate(it) }
             if (device == null || Scope.READ !in device.scopes) {
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "unauthorized"))
