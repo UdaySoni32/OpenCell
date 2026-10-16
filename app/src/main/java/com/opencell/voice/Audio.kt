@@ -38,6 +38,6 @@ interface SttEngine {
 
 interface TtsEngine {
     val label: String
-    /** Blocking; run on IO. */
-    fun synthesize(text: String): Pcm
+
+    suspend fun synthesize(text: String): Pcm
 }

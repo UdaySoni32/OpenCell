@@ -104,7 +104,7 @@ class VoiceAgent(
     }
 
     private suspend fun say(text: String) {
-        output.play(withContext(io) { tts.synthesize(text) })
+        output.play(tts.synthesize(text))
     }
 
     private fun add(speaker: Speaker, text: String) {
