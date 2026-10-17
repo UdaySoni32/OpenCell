@@ -7,6 +7,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -32,6 +33,7 @@ import androidx.navigation.navArgument
 import com.opencell.ui.calls.CallsScreen
 import com.opencell.ui.contacts.ContactsScreen
 import com.opencell.ui.dialer.DialerScreen
+import com.opencell.ui.assistant.AssistantChatScreen
 import com.opencell.ui.messages.ConversationScreen
 import com.opencell.ui.messages.ThreadsScreen
 import com.opencell.ui.onboarding.GuideScreen
@@ -51,6 +53,7 @@ object Routes {
     const val GUIDE = "guide"
     const val ACTIVITY = "activity"
     const val ASSISTANT = "assistant"
+    const val AI_SETTINGS = "ai-settings"
     const val MEMORY = "memory"
     const val DIALER = "dialer?number={number}"
     const val CONVERSATION = "conversation?threadId={threadId}&address={address}"
@@ -65,6 +68,7 @@ private val tabs = listOf(
     Tab(Routes.CALLS, "Calls", Icons.Filled.History),
     Tab(Routes.MESSAGES, "Messages", Icons.AutoMirrored.Filled.Chat),
     Tab(Routes.CONTACTS, "Contacts", Icons.Filled.Contacts),
+    Tab(Routes.ASSISTANT, "Assistant", Icons.Filled.AutoAwesome),
     Tab(Routes.SETUP, "Settings", Icons.Filled.Settings),
 )
 
@@ -139,10 +143,11 @@ fun OpenCellNavHost(
                     onOpenGuide = { nav.navigate(Routes.GUIDE) },
                     onOpenGateway = { nav.navigate(Routes.GATEWAY) },
                     onOpenActivity = { nav.navigate(Routes.ACTIVITY) },
-                    onOpenAssistant = { nav.navigate(Routes.ASSISTANT) },
+                    onOpenAssistant = { nav.navigate(Routes.AI_SETTINGS) },
                 )
             }
-            composable(Routes.ASSISTANT) { AssistantScreen(onBack = { nav.popBackStack() }, onOpenMemory = { nav.navigate(Routes.MEMORY) }) }
+            composable(Routes.ASSISTANT) { AssistantChatScreen(onOpenSettings = { nav.navigate(Routes.AI_SETTINGS) }) }
+            composable(Routes.AI_SETTINGS) { AssistantScreen(onBack = { nav.popBackStack() }, onOpenMemory = { nav.navigate(Routes.MEMORY) }) }
             composable(Routes.MEMORY) { MemoryScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.GATEWAY) { GatewayScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.ACTIVITY) { ActivityScreen(onBack = { nav.popBackStack() }) }
