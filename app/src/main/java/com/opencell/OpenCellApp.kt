@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.Log
 import com.opencell.agent.Assistant
 import com.opencell.agent.AssistantNotifications
+import com.opencell.assistant.AssistantOrchestrator
 import com.opencell.ai.AiSettingsStore
 import com.opencell.ai.KeystoreSecrets
 import com.opencell.calllog.AppCallRecorder
@@ -100,6 +101,7 @@ class AppContainer(context: Context) {
 
     val secrets = KeystoreSecrets(appContext)
     val aiSettings = AiSettingsStore(appContext, secrets)
+    val assistantOrchestrator by lazy { AssistantOrchestrator(aiSettings, database.memoryDao()) }
 
     val assistant: Assistant by lazy {
         Assistant(

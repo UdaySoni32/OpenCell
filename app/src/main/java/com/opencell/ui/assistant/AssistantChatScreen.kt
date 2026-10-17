@@ -22,10 +22,12 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -42,16 +44,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.opencell.AppContainer
 import com.opencell.ai.ChatMessage
-import com.opencell.ai.LlmException
 import com.opencell.ai.Role
+import com.opencell.assistant.AssistantIntent
 import com.opencell.assistant.NO_PROVIDER_MESSAGE
 import com.opencell.assistant.AssistantMessage
-import com.opencell.assistant.AssistantPrompt
 import com.opencell.assistant.AssistantThread
 import com.opencell.assistant.assistantErrorMessage
-import com.opencell.assistant.buildAssistantPrompt
+import com.opencell.policy.ActionRequest
+import com.opencell.policy.ActionResult
+import com.opencell.policy.ActionType
+import com.opencell.policy.Actor
 import com.opencell.memory.MemoryFact
-import com.opencell.memory.MemoryRetriever
 import com.opencell.memory.MemorySourceType
 import com.opencell.memory.RememberCommandParser
 import com.opencell.ui.appViewModel
@@ -71,20 +74,25 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+data class PendingAssistantAction(val to: String, val body: String, val reason: String?)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssistantChatViewModel(private val container: AppContainer) : ViewModel() {
     private val dao = container.database.assistantDao()
     private val memory = container.database.memoryDao()
+    private val orchestrator = container.assistantOrchestrator
     private val threadId = MutableStateFlow<Long?>(null)
     private val threadMutex = Mutex()
     private val _sending = MutableStateFlow(false)
     private val _error = MutableStateFlow<String?>(null)
+    private val _pendingAction = MutableStateFlow<PendingAssistantAction?>(null)
 
     val messages: StateFlow<List<AssistantMessage>> = threadId
         .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else dao.observeMessages(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val sending: StateFlow<Boolean> = _sending.asStateFlow()
     val error: StateFlow<String?> = _error.asStateFlow()
+    val pendingAction: StateFlow<PendingAssistantAction?> = _pendingAction.asStateFlow()
 
     init {
         viewModelScope.launch { ensureThread() }
@@ -135,30 +143,40 @@ class AssistantChatViewModel(private val container: AppContainer) : ViewModel() 
                     return@launch
                 }
 
-                val settings = container.aiSettings.current()
-                val instructions = container.aiSettings.currentInstructions()
-                val llm = container.aiSettings.buildLlm()
-                if (llm == null) {
-                    _error.value = NO_PROVIDER_MESSAGE
-                    return@launch
-                }
-
                 val history = withContext(Dispatchers.IO) { dao.messages(id) }
                     .map { ChatMessage(it.role, it.content) }
-                val memories = withContext(Dispatchers.IO) {
-                    val candidates = memory.relevant(null, limit = 80)
-                    MemoryRetriever.retrieve(candidates, contactKey = null, query = content, limit = 20)
+                val decision = orchestrator.decide(content, history).getOrElse { error ->
+                    _error.value = if (error.message == NO_PROVIDER_MESSAGE) NO_PROVIDER_MESSAGE else assistantErrorMessage(error)
+                    storeAssistantMessage(id, _error.value ?: "The assistant could not respond.")
+                    return@launch
                 }
-                val prompt: AssistantPrompt = buildAssistantPrompt(settings, instructions, history, memories)
-                val answer = withContext(Dispatchers.IO) {
-                    llm.complete(prompt.system, prompt.messages).trim()
-                }
-                if (answer.isBlank()) throw LlmException("AI returned an empty response")
-
-                val responseAt = System.currentTimeMillis()
-                withContext(Dispatchers.IO) {
-                    dao.insertMessage(AssistantMessage(threadId = id, role = Role.ASSISTANT, content = answer, createdAtMillis = responseAt))
-                    dao.touchThread(id, responseAt)
+                when (val intent = decision.intent) {
+                    is AssistantIntent.Answer -> storeAssistantMessage(id, intent.message)
+                    is AssistantIntent.AskClarification -> storeAssistantMessage(id, intent.message)
+                    is AssistantIntent.SendSms -> {
+                        _pendingAction.value = PendingAssistantAction(intent.to, intent.body, intent.reason)
+                        storeAssistantMessage(id, "I drafted an SMS to ${intent.to}:\n\n\"${intent.body}\"\n\nReview it below before sending.")
+                    }
+                    is AssistantIntent.Remember -> {
+                        val at = System.currentTimeMillis()
+                        withContext(Dispatchers.IO) {
+                            memory.insert(
+                                MemoryFact(
+                                    contactKey = null,
+                                    text = intent.text,
+                                    source = "Assistant suggestion",
+                                    createdAtMillis = at,
+                                    category = intent.category,
+                                    sourceType = MemorySourceType.INFERRED,
+                                    confidence = 0.65,
+                                    needsConfirmation = true,
+                                    updatedAtMillis = at,
+                                ),
+                            )
+                        }
+                        storeAssistantMessage(id, "I found a possible memory:\n\n${intent.text}\n\nReview it in What it remembers before I use it.")
+                    }
+                    is AssistantIntent.Forget -> storeAssistantMessage(id, "I found a request to forget \"${intent.text}\". Open What it remembers to review and delete that memory.")
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -167,6 +185,37 @@ class AssistantChatViewModel(private val container: AppContainer) : ViewModel() 
             } finally {
                 _sending.value = false
             }
+        }
+    }
+
+    fun approvePendingAction() {
+        val pending = _pendingAction.value ?: return
+        viewModelScope.launch {
+            val result = container.actionExecutor.submit(
+                ActionRequest(Actor.User, ActionType.SEND_SMS, pending.to, pending.body),
+            )
+            val message = when (result) {
+                is ActionResult.Done -> "SMS queued for ${pending.to}."
+                is ActionResult.Pending -> "The SMS is waiting for approval on the phone."
+                is ActionResult.Denied -> "The SMS was not sent: ${result.reason}."
+                is ActionResult.Failed -> "The SMS could not be sent: ${result.reason}."
+            }
+            storeAssistantMessage(ensureThread(), message)
+            _pendingAction.value = null
+        }
+    }
+
+    fun cancelPendingAction() {
+        if (_pendingAction.value == null) return
+        _pendingAction.value = null
+        viewModelScope.launch { storeAssistantMessage(ensureThread(), "I cancelled that SMS draft.") }
+    }
+
+    private suspend fun storeAssistantMessage(id: Long, text: String) {
+        val at = System.currentTimeMillis()
+        withContext(Dispatchers.IO) {
+            dao.insertMessage(AssistantMessage(threadId = id, role = Role.ASSISTANT, content = text, createdAtMillis = at))
+            dao.touchThread(id, at)
         }
     }
 
@@ -194,6 +243,7 @@ fun AssistantChatScreen(onOpenSettings: () -> Unit, modifier: Modifier = Modifie
     val messages by vm.messages.collectAsState()
     val sending by vm.sending.collectAsState()
     val error by vm.error.collectAsState()
+    val pending by vm.pendingAction.collectAsState()
     var draft by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
 
@@ -224,13 +274,25 @@ fun AssistantChatScreen(onOpenSettings: () -> Unit, modifier: Modifier = Modifie
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                         Text(
-                            "Ask your assistant anything. This chat does not send SMS or place calls.",
+                            "Ask your assistant anything. External actions are previewed before they run.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
             }
             items(messages, key = { it.id }) { message -> AssistantBubble(message) }
+        }
+        pending?.let { action ->
+            Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("Ready to send this SMS?", style = MaterialTheme.typography.titleMedium)
+                    Text("To ${action.to}: ${action.body}", modifier = Modifier.padding(top = 4.dp))
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                        OutlinedButton(onClick = vm::cancelPendingAction) { Text("Cancel") }
+                        FilledTonalButton(onClick = vm::approvePendingAction, modifier = Modifier.padding(start = 8.dp)) { Text("Send") }
+                    }
+                }
+            }
         }
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
