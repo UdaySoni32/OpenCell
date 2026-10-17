@@ -10,6 +10,8 @@ No root. No VoIP number. No OpenCell cloud.
 
 ## Download
 
+Project website: [OpenCell on GitHub Pages](https://udaysoni32.github.io/OpenCell/)
+
 | | |
 |---|---|
 | 📱 **Phone app** | [**OpenCell APK**: latest release](https://github.com/UdaySoni32/OpenCell/releases/latest) (Android 11+) |
