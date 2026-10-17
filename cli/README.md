@@ -10,6 +10,7 @@ opencell sms send +919876543210 "Running late"
 opencell call place +919876543210
 opencell call list
 opencell events                    # live JSON events
+opencell assistant ask "What should I follow up on?"
 ```
 
 Reaching the phone:
@@ -44,7 +45,7 @@ Add to your MCP client config:
 { "mcpServers": { "opencell": { "command": "opencell", "args": ["mcp"] } } }
 ```
 
-Tools: `send_sms`, `list_messages`, `place_call`, `list_calls`, `active_calls`, `control_call`, `list_approvals`.
+Tools: `send_sms`, `list_messages`, `place_call`, `list_calls`, `active_calls`, `control_call`, `list_approvals`, `ask_assistant`.
 
 ## Python
 

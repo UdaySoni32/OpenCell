@@ -49,6 +49,7 @@ private class FakeBackend : GatewayBackend {
     }
     override suspend fun submitCallAction(device: Actor.Device, callSid: String, action: String) = ActionResult.Failed("no such call")
     override suspend fun decideApproval(device: Actor.Device, approvalId: Long, approve: Boolean) = null
+    override suspend fun askAssistant(device: Actor.Device, message: String) = AssistantResponse("answer", "hello $message")
     override fun events(): Flow<EventDto> = emptyFlow()
 }
 
@@ -179,5 +180,16 @@ class GatewayModuleTest {
         assertEquals(null, Sids.callId("XX3"))
         assertEquals(5L, Sids.parseLong("SM", "SM5"))
         assertEquals(null, Sids.parseLong("SM", "AP5"))
+    }
+
+    @Test
+    fun `assistant endpoint requires read scope and returns a response`() = test {
+        val res = client.post("/v1/Assistant") {
+            header("Authorization", "Bearer ro")
+            contentType(ContentType.Application.Json)
+            setBody("""{"message":"what should I do?"}""")
+        }
+        assertEquals(HttpStatusCode.OK, res.status)
+        assertTrue(res.bodyAsText().contains("hello what should I do?"))
     }
 }

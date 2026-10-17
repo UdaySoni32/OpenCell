@@ -82,6 +82,18 @@ data class ErrorDto(val error: String)
 @Serializable
 data class HealthDto(val status: String, val app: String, val version: String)
 
+@Serializable
+data class AssistantRequest(val message: String)
+
+@Serializable
+data class AssistantResponse(
+    val status: String,
+    val reply: String,
+    @SerialName("action_type") val actionType: String? = null,
+    val to: String? = null,
+    val body: String? = null,
+)
+
 /** Everything the HTTP layer needs from the phone. The Android implementation wires it to the app container. */
 interface GatewayBackend {
     val version: String
@@ -97,6 +109,9 @@ interface GatewayBackend {
     suspend fun submitCall(device: Actor.Device, to: String, agentGoal: String? = null): ActionResult
     suspend fun submitCallAction(device: Actor.Device, callSid: String, action: String): ActionResult
     suspend fun decideApproval(device: Actor.Device, approvalId: Long, approve: Boolean): ApprovalDto?
+    /** Ask the assistant for an answer or an action draft; this endpoint never executes an action itself. */
+    suspend fun askAssistant(device: Actor.Device, message: String): AssistantResponse =
+        AssistantResponse("error", "Assistant gateway support is not available in this build.")
     fun events(): Flow<EventDto>
 }
 

@@ -16,6 +16,7 @@ import com.opencell.memory.MemoryFact
 import com.opencell.memory.PromptBuilder
 import com.opencell.memory.MemorySourceType
 import com.opencell.memory.ThreadLine
+import com.opencell.assistant.AssistantTaskDao
 import com.opencell.policy.ActionExecutor
 import com.opencell.policy.ActionPolicy
 import com.opencell.policy.ActionRequest
@@ -50,6 +51,7 @@ class VoiceController(
     private val executor: ActionExecutor,
     private val contacts: ContactsRepository,
     private val memory: MemoryDao,
+    private val tasks: AssistantTaskDao,
     private val notifier: AssistantNotifier,
 ) {
     val shizuku = ShizukuCallAudio(context)
@@ -125,7 +127,8 @@ class VoiceController(
         val number = call.number.orEmpty()
         val label = call.name ?: withContext(Dispatchers.IO) { contacts.nameFor(number) } ?: number.ifEmpty { "the caller" }
         val facts = memory.relevant(ActionPolicy.numberKey(number))
-        val system = PromptBuilder.voiceCall(settings.userName, ai.currentInstructions(), facts, label, goal, VoiceAgent.END_MARKER)
+        val openTasks = tasks.openTasks().take(8).map { it.title }
+        val system = PromptBuilder.voiceCall(settings.userName, ai.currentInstructions(), facts, label, goal, VoiceAgent.END_MARKER, openTasks)
         val opening = if (goal != null) null else greeting(settings.userName)
 
         calls.setSpeaker(true) // the far end hears the assistant through the speakerphone in every mode

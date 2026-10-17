@@ -90,6 +90,10 @@ class OpenCellClient:
     def approvals(self) -> list[dict]:
         return self._request("GET", "/v1/Approvals")
 
+    def ask_assistant(self, message: str) -> dict:
+        """Ask the phone assistant. Action responses are drafts; they are not executed by this call."""
+        return self._request("POST", "/v1/Assistant", json={"message": message})
+
     def decide(self, approval_sid: str, approve: bool) -> dict:
         return self._request("POST", f"/v1/Approvals/{approval_sid}", json={"decision": "approve" if approve else "deny"})
 

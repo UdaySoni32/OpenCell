@@ -33,6 +33,7 @@ private val wireJson = Json {
 private const val MAX_LIMIT = 500
 private const val MAX_SMS_LENGTH = 1600
 private const val MAX_GOAL_LENGTH = 500
+private const val MAX_ASSISTANT_MESSAGE_LENGTH = 4000
 
 /** HTTP + WebSocket API. Auth: `Authorization: Bearer <token>` (WebSocket may use `?token=`). */
 fun Application.gatewayModule(backend: GatewayBackend) {
@@ -111,6 +112,15 @@ fun Application.gatewayModule(backend: GatewayBackend) {
         get("/v1/Approvals") {
             call.authorized(backend, Scope.READ) ?: return@get
             call.respond(backend.listApprovals())
+        }
+
+        post("/v1/Assistant") {
+            val device = call.authorized(backend, Scope.READ) ?: return@post
+            val req = call.receive<AssistantRequest>()
+            if (req.message.isBlank() || req.message.length > MAX_ASSISTANT_MESSAGE_LENGTH) {
+                return@post call.respond(HttpStatusCode.BadRequest, ErrorDto("'message' must be 1..$MAX_ASSISTANT_MESSAGE_LENGTH characters"))
+            }
+            call.respond(backend.askAssistant(device, req.message.trim()))
         }
 
         post("/v1/Approvals/{sid}") {

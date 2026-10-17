@@ -125,6 +125,7 @@ class AppContainer(context: Context) {
             executor = actionExecutor,
             contacts = contactsRepository,
             memory = database.memoryDao(),
+            tasks = database.assistantTaskDao(),
             notifier = AssistantNotifications(appContext),
         )
     }
