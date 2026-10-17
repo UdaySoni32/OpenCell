@@ -46,9 +46,13 @@ import com.opencell.AppContainer
 import com.opencell.ai.ChatMessage
 import com.opencell.ai.Role
 import com.opencell.assistant.AssistantIntent
+import com.opencell.assistant.AssistantReminder
+import com.opencell.assistant.AssistantTask
+import com.opencell.assistant.AssistantTaskCommandParser
 import com.opencell.assistant.NO_PROVIDER_MESSAGE
 import com.opencell.assistant.AssistantMessage
 import com.opencell.assistant.AssistantThread
+import com.opencell.assistant.ReminderScheduler
 import com.opencell.assistant.assistantErrorMessage
 import com.opencell.policy.ActionRequest
 import com.opencell.policy.ActionResult
@@ -80,6 +84,7 @@ data class PendingAssistantAction(val to: String, val body: String, val reason: 
 class AssistantChatViewModel(private val container: AppContainer) : ViewModel() {
     private val dao = container.database.assistantDao()
     private val memory = container.database.memoryDao()
+    private val tasks = container.database.assistantTaskDao()
     private val orchestrator = container.assistantOrchestrator
     private val threadId = MutableStateFlow<Long?>(null)
     private val threadMutex = Mutex()
@@ -143,6 +148,28 @@ class AssistantChatViewModel(private val container: AppContainer) : ViewModel() 
                     return@launch
                 }
 
+                AssistantTaskCommandParser.reminder(content)?.let { draft ->
+                    createReminder(id, draft.title, draft.triggerAtMillis)
+                    return@launch
+                }
+                AssistantTaskCommandParser.task(content)?.let { draft ->
+                    val at = System.currentTimeMillis()
+                    withContext(Dispatchers.IO) {
+                        tasks.insertTask(AssistantTask(title = draft.title, dueAtMillis = draft.dueAtMillis, createdAtMillis = at, updatedAtMillis = at))
+                    }
+                    storeAssistantMessage(id, "Created a task: ${draft.title}")
+                    return@launch
+                }
+                AssistantTaskCommandParser.completeTask(content)?.let { title ->
+                    val task = withContext(Dispatchers.IO) { tasks.openTasks().firstOrNull { it.title.equals(title, ignoreCase = true) || it.title.contains(title, ignoreCase = true) } }
+                    if (task == null) storeAssistantMessage(id, "I could not find an open task matching \"$title\".")
+                    else {
+                        withContext(Dispatchers.IO) { tasks.completeTask(task.id) }
+                        storeAssistantMessage(id, "Completed the task: ${task.title}")
+                    }
+                    return@launch
+                }
+
                 val history = withContext(Dispatchers.IO) { dao.messages(id) }
                     .map { ChatMessage(it.role, it.content) }
                 val decision = orchestrator.decide(content, history).getOrElse { error ->
@@ -177,6 +204,22 @@ class AssistantChatViewModel(private val container: AppContainer) : ViewModel() 
                         storeAssistantMessage(id, "I found a possible memory:\n\n${intent.text}\n\nReview it in What it remembers before I use it.")
                     }
                     is AssistantIntent.Forget -> storeAssistantMessage(id, "I found a request to forget \"${intent.text}\". Open What it remembers to review and delete that memory.")
+                    is AssistantIntent.CreateTask -> {
+                        val at = System.currentTimeMillis()
+                        withContext(Dispatchers.IO) {
+                            tasks.insertTask(AssistantTask(title = intent.title, details = intent.details, dueAtMillis = intent.dueAtMillis, createdAtMillis = at, updatedAtMillis = at))
+                        }
+                        storeAssistantMessage(id, "Created a task: ${intent.title}")
+                    }
+                    is AssistantIntent.CompleteTask -> {
+                        val task = withContext(Dispatchers.IO) { tasks.openTasks().firstOrNull { it.title.contains(intent.title, ignoreCase = true) } }
+                        if (task == null) storeAssistantMessage(id, "I could not find an open task matching \"${intent.title}\".")
+                        else {
+                            withContext(Dispatchers.IO) { tasks.completeTask(task.id) }
+                            storeAssistantMessage(id, "Completed the task: ${task.title}")
+                        }
+                    }
+                    is AssistantIntent.CreateReminder -> createReminder(id, intent.title, intent.triggerAtMillis)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -209,6 +252,18 @@ class AssistantChatViewModel(private val container: AppContainer) : ViewModel() 
         if (_pendingAction.value == null) return
         _pendingAction.value = null
         viewModelScope.launch { storeAssistantMessage(ensureThread(), "I cancelled that SMS draft.") }
+    }
+
+    private suspend fun createReminder(thread: Long, title: String, triggerAtMillis: Long) {
+        val now = System.currentTimeMillis()
+        if (triggerAtMillis <= now) {
+            storeAssistantMessage(thread, "That reminder time has already passed. Tell me a future time.")
+            return
+        }
+        val reminder = AssistantReminder(title = title, triggerAtMillis = triggerAtMillis, createdAtMillis = now)
+        val id = withContext(Dispatchers.IO) { tasks.insertReminder(reminder) }
+        ReminderScheduler.schedule(container.appContext, reminder.copy(id = id))
+        storeAssistantMessage(thread, "Reminder set for ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(triggerAtMillis))}: $title")
     }
 
     private suspend fun storeAssistantMessage(id: Long, text: String) {

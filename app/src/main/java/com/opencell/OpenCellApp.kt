@@ -54,7 +54,7 @@ class OpenCellApp : Application() {
 
 /** Manual DI: one instance of each long-lived object. */
 class AppContainer(context: Context) {
-    private val appContext = context.applicationContext
+    val appContext = context.applicationContext
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val database: OpenCellDatabase by lazy { OpenCellDatabase.create(appContext) }

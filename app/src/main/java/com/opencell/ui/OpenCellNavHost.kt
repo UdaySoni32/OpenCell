@@ -42,6 +42,7 @@ import com.opencell.ui.settings.AssistantScreen
 import com.opencell.ui.settings.MemoryScreen
 import com.opencell.ui.settings.GatewayScreen
 import com.opencell.ui.settings.SetupScreen
+import com.opencell.ui.settings.TasksScreen
 import kotlinx.coroutines.launch
 
 object Routes {
@@ -55,6 +56,7 @@ object Routes {
     const val ASSISTANT = "assistant"
     const val AI_SETTINGS = "ai-settings"
     const val MEMORY = "memory"
+    const val TASKS = "tasks"
     const val DIALER = "dialer?number={number}"
     const val CONVERSATION = "conversation?threadId={threadId}&address={address}"
 
@@ -144,11 +146,13 @@ fun OpenCellNavHost(
                     onOpenGateway = { nav.navigate(Routes.GATEWAY) },
                     onOpenActivity = { nav.navigate(Routes.ACTIVITY) },
                     onOpenAssistant = { nav.navigate(Routes.AI_SETTINGS) },
+                    onOpenTasks = { nav.navigate(Routes.TASKS) },
                 )
             }
             composable(Routes.ASSISTANT) { AssistantChatScreen(onOpenSettings = { nav.navigate(Routes.AI_SETTINGS) }) }
             composable(Routes.AI_SETTINGS) { AssistantScreen(onBack = { nav.popBackStack() }, onOpenMemory = { nav.navigate(Routes.MEMORY) }) }
             composable(Routes.MEMORY) { MemoryScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.TASKS) { TasksScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.GATEWAY) { GatewayScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.ACTIVITY) { ActivityScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.DIALER, arguments = listOf(navArgument("number") { type = NavType.StringType; defaultValue = "" })) {

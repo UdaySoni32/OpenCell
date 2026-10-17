@@ -71,6 +71,7 @@ fun SetupScreen(
     onOpenGateway: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenAssistant: () -> Unit,
+    onOpenTasks: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -124,6 +125,13 @@ fun SetupScreen(
             supportingContent = { Text("What automation may do, approvals, and the activity log") },
             trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
             modifier = Modifier.clickable(onClick = onOpenActivity),
+        )
+        ListItem(
+            leadingContent = { Icon(Icons.Filled.CheckCircle, null) },
+            headlineContent = { Text("Tasks & reminders") },
+            supportingContent = { Text("Follow-ups and reminders from your assistant") },
+            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+            modifier = Modifier.clickable(onClick = onOpenTasks),
         )
         ListItem(
             leadingContent = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) },

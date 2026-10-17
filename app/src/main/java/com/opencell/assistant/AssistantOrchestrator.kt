@@ -12,6 +12,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.long
 
 sealed interface AssistantIntent {
     data class Answer(val message: String) : AssistantIntent
@@ -19,6 +21,9 @@ sealed interface AssistantIntent {
     data class Remember(val text: String, val category: MemoryCategory) : AssistantIntent
     data class Forget(val text: String) : AssistantIntent
     data class SendSms(val to: String, val body: String, val reason: String?) : AssistantIntent
+    data class CreateTask(val title: String, val details: String?, val dueAtMillis: Long?) : AssistantIntent
+    data class CompleteTask(val title: String) : AssistantIntent
+    data class CreateReminder(val title: String, val triggerAtMillis: Long) : AssistantIntent
 }
 
 data class AssistantDecision(val intent: AssistantIntent, val raw: String)
@@ -45,6 +50,16 @@ object AssistantIntentParser {
                 require(isPhoneNumber(to))
                 AssistantIntent.SendSms(to, required(root, "body", 1600), root["reason"]?.jsonPrimitive?.content?.take(500))
             }
+            "create_task" -> AssistantIntent.CreateTask(
+                required(root, "title", 300),
+                root["details"]?.jsonPrimitive?.content?.trim()?.takeIf { it.isNotBlank() }?.take(1000),
+                root["due_at_millis"]?.jsonPrimitive?.longOrNull,
+            )
+            "complete_task" -> AssistantIntent.CompleteTask(required(root, "title", 300))
+            "create_reminder" -> AssistantIntent.CreateReminder(
+                required(root, "title", 300),
+                root["trigger_at_millis"]?.jsonPrimitive?.long ?: error("trigger_at_millis is required"),
+            )
             else -> null
         }
     }.getOrNull()
@@ -89,6 +104,10 @@ class AssistantOrchestrator(
         appendLine("remember: {\"type\":\"remember\",\"text\":\"...\",\"category\":\"PREFERENCE|IDENTITY|RELATIONSHIP|SCHEDULE|GOAL|COMMITMENT|INSTRUCTION|GENERAL\"}")
         appendLine("forget: {\"type\":\"forget\",\"text\":\"...\"}")
         appendLine("send_sms: {\"type\":\"send_sms\",\"to\":\"+...\",\"body\":\"...\",\"reason\":\"...\"}")
+        appendLine("create_task: {\"type\":\"create_task\",\"title\":\"...\",\"details\":\"...\",\"due_at_millis\":123}")
+        appendLine("complete_task: {\"type\":\"complete_task\",\"title\":\"...\"}")
+        appendLine("create_reminder: {\"type\":\"create_reminder\",\"title\":\"...\",\"trigger_at_millis\":123}")
+        appendLine("Current UTC epoch millis: ${System.currentTimeMillis()}")
         appendLine("Never claim an SMS was sent. send_sms is only a draft for the user to review. Never invent a phone number.")
         if (instructions.isNotBlank()) appendLine("$owner's instructions:\n${instructions.trim()}")
         if (facts.isNotEmpty()) appendLine("Relevant confirmed memories:\n" + facts.joinToString("\n") { "- ${it.text}" })
