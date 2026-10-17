@@ -8,8 +8,10 @@ import com.opencell.ai.LlmProvider
 import com.opencell.ai.Role
 import com.opencell.contacts.ContactsRepository
 import com.opencell.memory.MemoryDao
+import com.opencell.memory.MemoryCategory
 import com.opencell.memory.MemoryFact
 import com.opencell.memory.PromptBuilder
+import com.opencell.memory.MemorySourceType
 import com.opencell.memory.ThreadLine
 import com.opencell.policy.ActionExecutor
 import com.opencell.policy.ActionPolicy
@@ -92,9 +94,22 @@ class Assistant(
         val prompt = PromptBuilder.factExtraction(label, history(from))
         val answer = runCatching { withContext(Dispatchers.IO) { llm.complete(prompt.system, prompt.messages, maxTokens = 300) } }
             .getOrElse { Log.w(TAG, "fact extraction failed", it); return }
-        val known = memory.relevant(key, limit = 200).map { it.text.lowercase() }.toSet()
+        val known = memory.relevant(key, limit = 200, includeUnconfirmed = true).map { it.text.lowercase() }.toSet()
         PromptBuilder.parseFacts(answer, label).filter { (_, text) -> text.lowercase() !in known }.forEach { (aboutUser, text) ->
-            memory.insert(MemoryFact(contactKey = if (aboutUser) null else key, text = text, source = "SMS with $label", createdAtMillis = now()))
+            val at = now()
+            memory.insert(
+                MemoryFact(
+                    contactKey = if (aboutUser) null else key,
+                    text = text,
+                    source = "SMS with $label",
+                    createdAtMillis = at,
+                    category = MemoryCategory.GENERAL,
+                    sourceType = MemorySourceType.SMS,
+                    confidence = 0.75,
+                    needsConfirmation = true,
+                    updatedAtMillis = at,
+                ),
+            )
         }
     }
 

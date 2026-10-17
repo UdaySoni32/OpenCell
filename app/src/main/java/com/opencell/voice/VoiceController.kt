@@ -11,8 +11,10 @@ import com.opencell.ai.SpeechConfig
 import com.opencell.ai.SpeechKind
 import com.opencell.contacts.ContactsRepository
 import com.opencell.memory.MemoryDao
+import com.opencell.memory.MemoryCategory
 import com.opencell.memory.MemoryFact
 import com.opencell.memory.PromptBuilder
+import com.opencell.memory.MemorySourceType
 import com.opencell.memory.ThreadLine
 import com.opencell.policy.ActionExecutor
 import com.opencell.policy.ActionPolicy
@@ -206,9 +208,22 @@ class VoiceController(
         val key = number?.let(ActionPolicy::numberKey)
         val prompt = PromptBuilder.factExtraction(label, lines)
         val answer = runCatching { withContext(Dispatchers.IO) { llm.complete(prompt.system, prompt.messages, 300) } }.getOrNull() ?: return
-        val known = memory.relevant(key, 200).map { it.text.lowercase() }.toSet()
+        val known = memory.relevant(key, 200, includeUnconfirmed = true).map { it.text.lowercase() }.toSet()
         PromptBuilder.parseFacts(answer, label).filter { it.second.lowercase() !in known }.forEach { (aboutUser, text) ->
-            memory.insert(MemoryFact(contactKey = if (aboutUser) null else key, text = text, source = "call with $label", createdAtMillis = System.currentTimeMillis()))
+            val at = System.currentTimeMillis()
+            memory.insert(
+                MemoryFact(
+                    contactKey = if (aboutUser) null else key,
+                    text = text,
+                    source = "call with $label",
+                    createdAtMillis = at,
+                    category = MemoryCategory.GENERAL,
+                    sourceType = MemorySourceType.CALL,
+                    confidence = 0.75,
+                    needsConfirmation = true,
+                    updatedAtMillis = at,
+                ),
+            )
         }
     }
 

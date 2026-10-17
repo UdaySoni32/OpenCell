@@ -50,6 +50,10 @@ import com.opencell.assistant.AssistantPrompt
 import com.opencell.assistant.AssistantThread
 import com.opencell.assistant.assistantErrorMessage
 import com.opencell.assistant.buildAssistantPrompt
+import com.opencell.memory.MemoryFact
+import com.opencell.memory.MemoryRetriever
+import com.opencell.memory.MemorySourceType
+import com.opencell.memory.RememberCommandParser
 import com.opencell.ui.appViewModel
 import com.opencell.ui.relativeTime
 import kotlinx.coroutines.CancellationException
@@ -70,6 +74,7 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssistantChatViewModel(private val container: AppContainer) : ViewModel() {
     private val dao = container.database.assistantDao()
+    private val memory = container.database.memoryDao()
     private val threadId = MutableStateFlow<Long?>(null)
     private val threadMutex = Mutex()
     private val _sending = MutableStateFlow(false)
@@ -103,6 +108,33 @@ class AssistantChatViewModel(private val container: AppContainer) : ViewModel() 
                     dao.touchThread(id, now)
                 }
 
+                RememberCommandParser.parse(content)?.let { command ->
+                    withContext(Dispatchers.IO) {
+                        memory.insert(
+                            MemoryFact(
+                                contactKey = null,
+                                text = command.text,
+                                source = "Assistant chat",
+                                createdAtMillis = now,
+                                category = command.category,
+                                sourceType = MemorySourceType.USER_CONFIRMED,
+                                confidence = 1.0,
+                                updatedAtMillis = now,
+                            ),
+                        )
+                        dao.insertMessage(
+                            AssistantMessage(
+                                threadId = id,
+                                role = Role.ASSISTANT,
+                                content = "I’ll remember that: ${command.text}",
+                                createdAtMillis = now,
+                            ),
+                        )
+                        dao.touchThread(id, now)
+                    }
+                    return@launch
+                }
+
                 val settings = container.aiSettings.current()
                 val instructions = container.aiSettings.currentInstructions()
                 val llm = container.aiSettings.buildLlm()
@@ -113,7 +145,11 @@ class AssistantChatViewModel(private val container: AppContainer) : ViewModel() 
 
                 val history = withContext(Dispatchers.IO) { dao.messages(id) }
                     .map { ChatMessage(it.role, it.content) }
-                val prompt: AssistantPrompt = buildAssistantPrompt(settings, instructions, history)
+                val memories = withContext(Dispatchers.IO) {
+                    val candidates = memory.relevant(null, limit = 80)
+                    MemoryRetriever.retrieve(candidates, contactKey = null, query = content, limit = 20)
+                }
+                val prompt: AssistantPrompt = buildAssistantPrompt(settings, instructions, history, memories)
                 val answer = withContext(Dispatchers.IO) {
                     llm.complete(prompt.system, prompt.messages).trim()
                 }
