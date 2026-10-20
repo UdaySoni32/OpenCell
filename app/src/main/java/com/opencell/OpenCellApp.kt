@@ -22,7 +22,6 @@ import com.opencell.policy.ActionExecutor
 import com.opencell.policy.ActionHandlers
 import com.opencell.policy.ActionType
 import com.opencell.policy.ApprovalNotifier
-import com.opencell.policy.ApprovalStatus
 import com.opencell.sms.SmsNotifier
 import com.opencell.sms.SmsRepository
 import com.opencell.telecom.ActiveCall
@@ -31,6 +30,7 @@ import com.opencell.telecom.CallState
 import com.opencell.telecom.CallPlacer
 import com.opencell.telecom.IncomingCallNotifier
 import com.opencell.voice.VoiceController
+import com.opencell.voice.LocalVoiceController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -80,7 +80,9 @@ class AppContainer(context: Context) {
             policySettings = settings::currentPolicy,
             handlers = object : ActionHandlers {
                 override suspend fun sendSms(to: String, body: String) = smsRepository.send(to, body)
-                override fun placeCall(to: String) = callPlacer.placeCall(to)
+                override fun placeCall(to: String, goal: String?): Boolean =
+                    if (goal == null) callPlacer.placeCall(to)
+                    else voiceController.placeCall(goal) { token -> callPlacer.placeCall(to, token) }
                 override fun controlCall(type: ActionType, callId: String): Boolean {
                     if (callManager.activeCalls.value.none { it.id == callId }) return false
                     when (type) {
@@ -93,7 +95,6 @@ class AppContainer(context: Context) {
             },
             prompter = ApprovalNotifier(appContext),
             onApprovalChanged = {
-                if (it.status == ApprovalStatus.DENIED && it.action == ActionType.PLACE_CALL) voiceController.forgetGoal(it.target)
                 _events.tryEmit(AppEvent.ApprovalChanged(it.id, it.status.name.lowercase(), it.action.name.lowercase(), it.target, System.currentTimeMillis()))
             },
         )
@@ -102,6 +103,8 @@ class AppContainer(context: Context) {
     val secrets = KeystoreSecrets(appContext)
     val aiSettings = AiSettingsStore(appContext, secrets)
     val assistantOrchestrator by lazy { AssistantOrchestrator(aiSettings, database.memoryDao()) }
+
+    val localVoiceController by lazy { LocalVoiceController(appContext, appScope, aiSettings) }
 
     val assistant: Assistant by lazy {
         Assistant(

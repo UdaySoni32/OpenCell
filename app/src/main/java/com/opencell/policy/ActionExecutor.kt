@@ -1,5 +1,7 @@
 package com.opencell.policy
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -15,7 +17,8 @@ sealed interface ActionResult {
 interface ActionHandlers {
     /** Returns the SMS provider id, or null on failure. */
     suspend fun sendSms(to: String, body: String): Long?
-    fun placeCall(to: String): Boolean
+    /** [goal] belongs only to this execution; null places an ordinary call. */
+    fun placeCall(to: String, goal: String? = null): Boolean
     fun controlCall(type: ActionType, callId: String): Boolean
 }
 
@@ -34,10 +37,13 @@ class ActionExecutor(
     private val onApprovalChanged: (ApprovalEntity) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
 ) {
+    // Shared by submission and approval: the limit check, side effect and audit are one
+    // serialized operation in the app's single ActionExecutor.
+    private val actionMutex = Mutex()
 
-    suspend fun submit(request: ActionRequest): ActionResult {
+    suspend fun submit(request: ActionRequest): ActionResult = actionMutex.withLock {
         val actionsToday = dao.countOutboundSince(startOfToday())
-        return when (val decision = ActionPolicy.decide(request, policySettings(), actionsToday)) {
+        when (val decision = ActionPolicy.decide(request, policySettings(), actionsToday)) {
             Decision.Allow -> execute(request)
             Decision.Ask -> queueForApproval(request)
             is Decision.Deny -> {
@@ -47,21 +53,38 @@ class ActionExecutor(
         }
     }
 
-    /** User tapped Approve/Deny (or a computer with the approve scope did). Returns null if not pending. */
-    suspend fun decide(approvalId: Long, approve: Boolean, decidedBy: String): ApprovalEntity? {
-        val approval = dao.approval(approvalId)?.takeIf { it.status == ApprovalStatus.PENDING } ?: return null
+    /**
+     * Explicit approval bypasses automatic limits/asking. Local callers default to the user;
+     * remote callers must supply their actor so the current kill switch can still block them.
+     * Returns null if not pending, or if remote approval is blocked (leaving it pending).
+     */
+    suspend fun decide(
+        approvalId: Long,
+        approve: Boolean,
+        decidedBy: String,
+        decidingActor: Actor = Actor.User,
+    ): ApprovalEntity? = actionMutex.withLock {
+        val approval = dao.approval(approvalId)?.takeIf { it.status == ApprovalStatus.PENDING } ?: return@withLock null
+        if (approve && decidingActor != Actor.User && policySettings().killSwitch) {
+            audit(decidingActor.label, ActionRequest(decidingActor, approval.action, approval.target, approval.body), Outcome.DENIED, "kill switch is on")
+            return@withLock null
+        }
+        // Consume before any side effect. If execution is interrupted or persistence of its
+        // result fails, retrying the decision must not send the action again.
+        val decided = approval.copy(status = if (approve) ApprovalStatus.APPROVED else ApprovalStatus.DENIED)
+        dao.updateApproval(decided)
         prompter.dismiss(approvalId)
         val updated = if (approve) {
             val request = ActionRequest(Actor.User, approval.action, approval.target, approval.body)
             val result = execute(request, actorLabel = "${approval.actorLabel} (approved by $decidedBy)")
-            approval.copy(status = ApprovalStatus.APPROVED, resultRef = (result as? ActionResult.Done)?.ref ?: result.toString())
+            decided.copy(resultRef = (result as? ActionResult.Done)?.ref ?: result.toString())
         } else {
             audit(approval.actorLabel, ActionRequest(Actor.User, approval.action, approval.target, approval.body), Outcome.DENIED, "denied by $decidedBy")
-            approval.copy(status = ApprovalStatus.DENIED)
+            decided
         }
         dao.updateApproval(updated)
         onApprovalChanged(updated)
-        return updated
+        updated
     }
 
     private suspend fun queueForApproval(request: ActionRequest): ActionResult {
@@ -86,7 +109,7 @@ class ActionExecutor(
                 ActionType.SEND_SMS -> handlers.sendSms(request.target, request.body.orEmpty())
                     ?.let { ActionResult.Done(it.toString()) } ?: ActionResult.Failed("SMS could not be queued")
                 ActionType.PLACE_CALL ->
-                    if (handlers.placeCall(request.target)) ActionResult.Done(null) else ActionResult.Failed("call could not be placed")
+                    if (handlers.placeCall(request.target, CallGoal.fromBody(request.body))) ActionResult.Done(null) else ActionResult.Failed("call could not be placed")
                 ActionType.ANSWER_CALL, ActionType.REJECT_CALL, ActionType.HANGUP_CALL ->
                     if (handlers.controlCall(request.type, request.target)) ActionResult.Done(request.target) else ActionResult.Failed("no such call")
             }

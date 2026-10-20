@@ -1,6 +1,5 @@
 package com.opencell.assistant
 
-import android.Manifest
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,16 +7,21 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import androidx.core.app.NotificationCompat
 import com.opencell.OpenCellApp
 import com.opencell.R
+import com.opencell.notifications.hasNotificationPermission
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 object ReminderScheduler {
+    /** Reboot clears AlarmManager; Room remains the source of truth for pending reminders. */
+    suspend fun restorePending(context: Context, dao: AssistantTaskDao) {
+        remindersToRestore(dao.pendingReminders(), System.currentTimeMillis()).forEach { schedule(context, it) }
+    }
+
     fun schedule(context: Context, reminder: AssistantReminder) {
         val alarm = context.getSystemService(AlarmManager::class.java)
         alarm.setAndAllowWhileIdle(
@@ -50,7 +54,7 @@ class AssistantReminderReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra(ReminderScheduler.EXTRA_TITLE).orEmpty().ifBlank { "OpenCell reminder" }
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL, "Assistant reminders", NotificationManager.IMPORTANCE_HIGH))
-        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+        if (context.hasNotificationPermission()) {
             manager.notify(50_000 + id.toInt(), NotificationCompat.Builder(context, CHANNEL)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentTitle("Reminder")

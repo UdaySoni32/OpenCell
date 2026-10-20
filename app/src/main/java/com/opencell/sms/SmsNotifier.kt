@@ -1,14 +1,13 @@
 package com.opencell.sms
 
-import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import androidx.core.app.NotificationCompat
 import com.opencell.R
+import com.opencell.notifications.hasNotificationPermission
 import com.opencell.ui.MainActivity
 
 class SmsNotifier(private val context: Context) {
@@ -19,7 +18,7 @@ class SmsNotifier(private val context: Context) {
     }
 
     fun notifyIncoming(address: String, body: String, threadId: Long) {
-        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        if (!context.hasNotificationPermission()) return
         val open = PendingIntent.getActivity(
             context,
             threadId.toInt(),

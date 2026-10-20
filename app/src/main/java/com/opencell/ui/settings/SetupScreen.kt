@@ -5,6 +5,7 @@ import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,8 +39,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.opencell.notifications.requiresNotificationPermission
 
-val REQUIRED_PERMISSIONS = arrayOf(
+val REQUIRED_PERMISSIONS: Array<String>
+    get() = requiredPermissions(Build.VERSION.SDK_INT)
+
+internal fun requiredPermissions(sdkInt: Int): Array<String> = arrayOf(
     Manifest.permission.CALL_PHONE,
     Manifest.permission.READ_PHONE_STATE,
     Manifest.permission.READ_CALL_LOG,
@@ -48,8 +53,7 @@ val REQUIRED_PERMISSIONS = arrayOf(
     Manifest.permission.READ_SMS,
     Manifest.permission.RECEIVE_SMS,
     Manifest.permission.ANSWER_PHONE_CALLS,
-    Manifest.permission.POST_NOTIFICATIONS,
-)
+) + if (requiresNotificationPermission(sdkInt)) arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray()
 
 data class SetupStatus(val dialer: Boolean, val sms: Boolean, val permissions: Boolean, val notificationAccess: Boolean) {
     val complete get() = dialer && sms && permissions && notificationAccess

@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.opencell.AppContainer
+import com.opencell.policy.Actor
 import com.opencell.policy.ApprovalEntity
 import com.opencell.policy.AuditEntry
 import com.opencell.policy.Outcome
@@ -54,7 +55,7 @@ class ActivityViewModel(private val container: AppContainer) : ViewModel() {
     val audit = container.database.policyDao().observeAudit().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun update(transform: (PolicySettings) -> PolicySettings) = viewModelScope.launch { container.settings.updatePolicy(transform) }
-    fun decide(approval: ApprovalEntity, approve: Boolean) = viewModelScope.launch { container.actionExecutor.decide(approval.id, approve, "you") }
+    fun decide(approval: ApprovalEntity, approve: Boolean) = viewModelScope.launch { container.actionExecutor.decide(approval.id, approve, "you", decidingActor = Actor.User) }
 }
 
 private val modeText = mapOf(

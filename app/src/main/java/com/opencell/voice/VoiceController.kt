@@ -38,7 +38,6 @@ import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.concurrent.ConcurrentHashMap
 
 data class VoiceSession(val callId: String, val mode: CallAudioMode, val listenOnly: Boolean, val lines: List<TranscriptLine> = emptyList(), val status: String = "starting")
 
@@ -62,34 +61,24 @@ class VoiceController(
     val session: StateFlow<VoiceSession?> = _session.asStateFlow()
     private var job: Job? = null
 
-    /** Goals for calls the AI was asked to place, keyed by number, consumed when that call connects. */
-    private data class PendingGoal(val goal: String, val atMillis: Long)
-    private val pendingGoals = ConcurrentHashMap<String, PendingGoal>()
+    private val outgoingGoals = OutgoingVoiceGoals()
 
     fun capabilities() = AudioCapabilities(
         shizukuReady = shizuku.status() == ShizukuCallAudio.Status.READY,
         hasMicPermission = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED,
     )
 
-    fun rememberGoal(number: String, goal: String) {
-        ActionPolicy.numberKey(number)?.let { pendingGoals[it] = PendingGoal(goal.take(500), System.currentTimeMillis()) }
-    }
-
-    fun forgetGoal(number: String) {
-        ActionPolicy.numberKey(number)?.let { pendingGoals.remove(it) }
-    }
-
-    /** A goal only applies to a call that connects soon after the request; never to a later manual call. */
-    private fun takeGoal(key: String): String? =
-        pendingGoals.remove(key)?.takeIf { System.currentTimeMillis() - it.atMillis < GOAL_TTL_MS }?.goal
+    /** Called only by the executing action handler. The placer must attach the token to its call. */
+    fun placeCall(goal: String?, place: (String?) -> Boolean): Boolean = outgoingGoals.placeCall(goal, place)
 
     /** Called on every call state change (from the container's call event loop). */
     fun onCallState(callId: String, number: String?, state: CallState, isIncoming: Boolean) {
-        val key = number?.let(ActionPolicy::numberKey)
+        val token = calls.voiceGoalToken(callId)
         when {
+            state == CallState.DISCONNECTED -> outgoingGoals.discard(token)
             state == CallState.RINGING && isIncoming -> scope.launch { maybeAutoPickup(callId, number) }
-            state == CallState.ACTIVE && !isIncoming && key != null && pendingGoals.containsKey(key) ->
-                takeGoal(key)?.let { goal -> handle(callId, goal) }
+            state == CallState.ACTIVE && !isIncoming ->
+                outgoingGoals.take(token)?.let { goal -> handle(callId, goal) }
             state == CallState.ACTIVE && isIncoming && _session.value == null -> scope.launch { maybeListen(callId) }
         }
     }
@@ -247,7 +236,6 @@ class VoiceController(
 
     companion object {
         private const val TAG = "VoiceController"
-        private const val GOAL_TTL_MS = 10 * 60_000L
 
         fun greeting(userName: String): String = if (userName.isBlank()) {
             "Hi, this is an AI assistant answering for this number. They can't come to the phone right now. Who's calling, please?"

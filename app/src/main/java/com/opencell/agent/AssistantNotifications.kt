@@ -1,12 +1,11 @@
 package com.opencell.agent
 
-import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.content.pm.PackageManager
 import androidx.core.app.NotificationCompat
 import com.opencell.R
+import com.opencell.notifications.hasNotificationPermission
 
 class AssistantNotifications(private val context: Context) : AssistantNotifier {
     private val manager = context.getSystemService(NotificationManager::class.java)
@@ -17,7 +16,7 @@ class AssistantNotifications(private val context: Context) : AssistantNotifier {
     }
 
     override fun info(title: String, text: String) {
-        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        if (!context.hasNotificationPermission()) return
         val n = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)

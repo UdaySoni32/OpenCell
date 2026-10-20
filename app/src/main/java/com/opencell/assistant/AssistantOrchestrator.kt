@@ -3,7 +3,6 @@ package com.opencell.assistant
 import com.opencell.ai.AiSettingsStore
 import com.opencell.ai.ChatMessage
 import com.opencell.ai.LlmException
-import com.opencell.ai.Role
 import com.opencell.memory.MemoryDao
 import com.opencell.memory.MemoryRetriever
 import com.opencell.memory.MemoryCategory
@@ -78,6 +77,7 @@ class AssistantOrchestrator(
     private val ai: AiSettingsStore,
     private val memory: MemoryDao,
 ) {
+    /** History may include the current user turn (as the app UI does); it is sent exactly once. */
     suspend fun decide(userText: String, history: List<ChatMessage>): Result<AssistantDecision> {
         val llm = ai.buildLlm() ?: return Result.failure(LlmException(NO_PROVIDER_MESSAGE))
         val settings = ai.current()
@@ -87,7 +87,8 @@ class AssistantOrchestrator(
         }
         val prompt = structuredPrompt(settings.userName, instructions, facts)
         return runCatching {
-            val raw = withContext(Dispatchers.IO) { llm.complete(prompt, history.takeLast(MAX_HISTORY), 500).trim() }
+            val messages = assistantConversationHistory(userText, history)
+            val raw = withContext(Dispatchers.IO) { llm.complete(prompt, messages, 500).trim() }
             val intent = AssistantIntentParser.parse(raw)
                 ?: throw LlmException("The assistant returned an unsafe or invalid response")
             AssistantDecision(intent, raw)
@@ -113,7 +114,4 @@ class AssistantOrchestrator(
         if (facts.isNotEmpty()) appendLine("Relevant confirmed memories:\n" + facts.joinToString("\n") { "- ${it.text}" })
     }.trim()
 
-    companion object {
-        private const val MAX_HISTORY = 40
-    }
 }

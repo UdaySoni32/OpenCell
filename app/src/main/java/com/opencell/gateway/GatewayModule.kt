@@ -141,7 +141,15 @@ fun Application.gatewayModule(backend: GatewayBackend) {
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "unauthorized"))
                 return@webSocket
             }
-            backend.events().collect { send(Frame.Text(wireJson.encodeToString(EventDto.serializer(), it))) }
+            backend.events().collect {
+                // Tokens can be revoked or lose scopes while a socket remains open.
+                val current = token?.let { value -> backend.authenticate(value) }
+                if (current == null || Scope.READ !in current.scopes) {
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "authorization revoked"))
+                    return@collect
+                }
+                send(Frame.Text(wireJson.encodeToString(EventDto.serializer(), it)))
+            }
         }
     }
 }

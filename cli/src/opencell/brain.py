@@ -8,6 +8,7 @@ Pair it with Ollama for the LLM. Install with: pip install "opencell[brain]".
 
 # No `from __future__ import annotations`: FastAPI must resolve the locally imported UploadFile/Header types.
 import io
+import os
 import secrets
 import wave
 from collections.abc import Callable
@@ -58,11 +59,32 @@ def create_app(stt: SttFn, tts: TtsFn, token: str | None = None):  # noqa: ANN20
 
 def whisper_stt(model_size: str = "base") -> SttFn:
     from faster_whisper import WhisperModel
+    import numpy as np
 
-    model = WhisperModel(model_size, compute_type="int8")
+    # Explicit CPU default keeps the server portable on machines that have a
+    # CUDA-capable GPU but do not have the matching cuBLAS runtime installed.
+    # Set OPENCELL_WHISPER_DEVICE=cuda when the host is provisioned for it.
+    device = os.getenv("OPENCELL_WHISPER_DEVICE", "cpu")
+    model = WhisperModel(model_size, device=device, compute_type="int8")
 
     def run(wav_bytes: bytes) -> str:
-        segments, _ = model.transcribe(io.BytesIO(wav_bytes), vad_filter=True)
+        # The phone sends WAV. Decode it here instead of handing BytesIO to
+        # PyAV: recent PyAV releases removed the metadata_errors argument that
+        # faster-whisper currently passes for file-like inputs. Passing a
+        # 16-kHz float array also avoids an unnecessary temporary file.
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
+            if wav.getsampwidth() != 2:
+                raise ValueError("speech input must be 16-bit PCM WAV")
+            channels = wav.getnchannels()
+            source_rate = wav.getframerate()
+            samples = np.frombuffer(wav.readframes(wav.getnframes()), dtype="<i2").astype(np.float32)
+        if channels > 1:
+            samples = samples.reshape(-1, channels).mean(axis=1)
+        samples /= 32768.0
+        if source_rate != 16_000 and len(samples):
+            positions = np.linspace(0, len(samples) - 1, round(len(samples) * 16_000 / source_rate))
+            samples = np.interp(positions, np.arange(len(samples)), samples).astype(np.float32)
+        segments, _ = model.transcribe(samples, vad_filter=True)
         return " ".join(s.text.strip() for s in segments)
 
     return run

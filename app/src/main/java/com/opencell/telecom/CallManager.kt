@@ -4,6 +4,7 @@ import android.os.Build
 import android.telecom.Call
 import android.telecom.CallAudioState
 import android.telecom.InCallService
+import android.telecom.TelecomManager
 import android.telecom.VideoProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -93,6 +94,13 @@ class CallManager {
     }
 
     fun firstIdWhere(predicate: (ActiveCall) -> Boolean): String? = activeCalls.value.firstOrNull(predicate)?.id
+
+    /** The token travels with this specific outgoing call, including same-number calls. */
+    fun voiceGoalToken(id: String): String? {
+        val extras = calls[id]?.details?.intentExtras ?: return null
+        return extras.getBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS)?.getString(CallPlacer.VOICE_GOAL_TOKEN)
+            ?: extras.getString(CallPlacer.VOICE_GOAL_TOKEN)
+    }
 
     private fun publish() {
         _activeCalls.update { calls.map { (id, call) -> call.toUi(id) }.sortedBy { it.id.removePrefix("call-").toInt() } }

@@ -3,15 +3,34 @@ package com.opencell.gateway
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import com.opencell.OpenCellApp
-import kotlinx.coroutines.runBlocking
+import com.opencell.assistant.ReminderScheduler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
-/** Restarts the gateway after reboot if the user left it on. */
+/** Restores reminders after reboot, and restarts the gateway if the user left it on. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        val settings = (context.applicationContext as OpenCellApp).container.settings
-        // A single DataStore read; fine to block briefly inside a boot broadcast.
-        if (runBlocking { settings.isGatewayEnabled() }) GatewayService.start(context)
+        val container = (context.applicationContext as OpenCellApp).container
+        val pending = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                try {
+                    ReminderScheduler.restorePending(context, container.database.assistantTaskDao())
+                } catch (e: Exception) {
+                    Log.w("BootReceiver", "Unable to restore reminders", e)
+                }
+                try {
+                    if (container.settings.isGatewayEnabled()) GatewayService.start(context)
+                } catch (e: Exception) {
+                    Log.w("BootReceiver", "Unable to restart gateway", e)
+                }
+            } finally {
+                pending.finish()
+            }
+        }
     }
 }

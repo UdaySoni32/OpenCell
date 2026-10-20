@@ -1,17 +1,16 @@
 package com.opencell.policy
 
-import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.opencell.OpenCellApp
 import com.opencell.R
+import com.opencell.notifications.hasNotificationPermission
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,7 +24,7 @@ class ApprovalNotifier(private val context: Context) : ApprovalPrompter {
     }
 
     override fun show(approval: ApprovalEntity) {
-        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        if (!context.hasNotificationPermission()) return
         val what = when (approval.action) {
             ActionType.SEND_SMS -> "Send SMS to ${approval.target}"
             ActionType.PLACE_CALL -> "Call ${approval.target}"
@@ -74,7 +73,7 @@ class ApprovalReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                executor.decide(id, approve, decidedBy = "you")
+                executor.decide(id, approve, decidedBy = "you", decidingActor = Actor.User)
             } catch (e: Exception) {
                 Log.e("ApprovalReceiver", "decision failed", e)
             } finally {

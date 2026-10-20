@@ -1,5 +1,8 @@
 package com.opencell.ui.assistant
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +21,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,8 +35,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,6 +71,7 @@ import com.opencell.memory.MemorySourceType
 import com.opencell.memory.RememberCommandParser
 import com.opencell.ui.appViewModel
 import com.opencell.ui.relativeTime
+import com.opencell.voice.LocalVoiceState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -98,6 +107,7 @@ class AssistantChatViewModel(private val container: AppContainer) : ViewModel() 
     val sending: StateFlow<Boolean> = _sending.asStateFlow()
     val error: StateFlow<String?> = _error.asStateFlow()
     val pendingAction: StateFlow<PendingAssistantAction?> = _pendingAction.asStateFlow()
+    val voice: StateFlow<LocalVoiceState> = container.localVoiceController.state
 
     init {
         viewModelScope.launch { ensureThread() }
@@ -106,6 +116,20 @@ class AssistantChatViewModel(private val container: AppContainer) : ViewModel() 
     fun clearError() {
         _error.value = null
     }
+
+    fun startVoice(goal: String?) {
+        container.localVoiceController.start(goal)
+    }
+
+    fun stopVoice() {
+        container.localVoiceController.stop()
+    }
+
+    fun voicePermissionDenied() {
+        container.localVoiceController.showError("Microphone permission is required for a voice conversation.")
+    }
+
+    fun voiceCapabilities() = container.localVoiceController.capabilities()
 
     fun send(text: String) {
         val content = text.trim()
@@ -289,6 +313,11 @@ class AssistantChatViewModel(private val container: AppContainer) : ViewModel() 
         }
     }
 
+    override fun onCleared() {
+        container.localVoiceController.dispose()
+        super.onCleared()
+    }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -299,8 +328,20 @@ fun AssistantChatScreen(onOpenSettings: () -> Unit, modifier: Modifier = Modifie
     val sending by vm.sending.collectAsState()
     val error by vm.error.collectAsState()
     val pending by vm.pendingAction.collectAsState()
+    val voice by vm.voice.collectAsState()
+    LifecycleStartEffect(vm) {
+        onStopOrDispose { vm.stopVoice() }
+    }
     var draft by rememberSaveable { mutableStateOf("") }
+    var voiceDialog by rememberSaveable { mutableStateOf(false) }
+    var voiceGoal by rememberSaveable { mutableStateOf("") }
+    var pendingVoiceGoal by rememberSaveable { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
+    val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val goal = pendingVoiceGoal
+        pendingVoiceGoal = null
+        if (granted && goal != null) vm.startVoice(goal) else if (!granted) vm.voicePermissionDenied()
+    }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
@@ -309,8 +350,19 @@ fun AssistantChatScreen(onOpenSettings: () -> Unit, modifier: Modifier = Modifie
     Column(modifier.fillMaxSize().imePadding()) {
         TopAppBar(
             title = { Text("Assistant") },
-            actions = { IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, "Assistant settings") } },
+            actions = {
+                IconButton(
+                    onClick = { if (voice.status.active) vm.stopVoice() else voiceDialog = true },
+                    enabled = !sending,
+                ) {
+                    Icon(if (voice.status.active) Icons.Filled.Stop else Icons.Filled.Call, if (voice.status.active) "Stop voice conversation" else "Start voice conversation")
+                }
+                IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, "Assistant settings") }
+            },
         )
+        if (voice.lines.isNotEmpty() || voice.error != null || voice.status.active) {
+            LocalVoiceCard(voice = voice, onStop = vm::stopVoice)
+        }
         error?.let { text ->
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
@@ -364,6 +416,55 @@ fun AssistantChatScreen(onOpenSettings: () -> Unit, modifier: Modifier = Modifie
             ) {
                 if (sending) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 else Icon(Icons.AutoMirrored.Filled.Send, "Send")
+            }
+        }
+    }
+
+    if (voiceDialog) {
+        AlertDialog(
+            onDismissRequest = { voiceDialog = false },
+            title = { Text("Start voice conversation") },
+            text = {
+                OutlinedTextField(
+                    value = voiceGoal,
+                    onValueChange = { voiceGoal = it },
+                    label = { Text("Optional goal or instructions") },
+                    placeholder = { Text("e.g. Help me plan my day") },
+                    minLines = 2,
+                    maxLines = 5,
+                )
+            },
+            dismissButton = { TextButton(onClick = { voiceDialog = false }) { Text("Cancel") } },
+            confirmButton = {
+                FilledTonalButton(onClick = {
+                    val goal = voiceGoal.trim()
+                    voiceDialog = false
+                    if (vmVoiceMicAllowed(vm)) vm.startVoice(goal) else {
+                        pendingVoiceGoal = goal
+                        micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                }) { Text("Start") }
+            },
+        )
+    }
+}
+
+private fun vmVoiceMicAllowed(vm: AssistantChatViewModel): Boolean = vm.voiceCapabilities().hasMicPermission
+
+@Composable
+private fun LocalVoiceCard(voice: LocalVoiceState, onStop: () -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("In-app voice · ${voice.status.label}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (voice.status.active) OutlinedButton(onClick = onStop) { Text("Stop") }
+            }
+            voice.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp)) }
+            voice.lines.takeLast(8).forEach { line ->
+                Text(
+                    "${if (line.speaker == com.opencell.voice.Speaker.THEM) "You" else "Assistant"}: ${line.text}",
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
     }
