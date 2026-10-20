@@ -1,0 +1,1 @@
+OpenCell: your phone, your assistant, and your rules—calls, SMS, gateway, memory, and approvals in one open-source Android app.
