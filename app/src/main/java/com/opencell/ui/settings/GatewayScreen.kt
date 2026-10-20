@@ -83,7 +83,6 @@ fun GatewayScreen(onBack: () -> Unit) {
     val running by vm.running.collectAsState()
     val code by vm.pairingCode.collectAsState()
     val devices by vm.devices.collectAsState()
-    val addresses = remember(running) { GatewayService.localAddresses() }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -98,8 +97,9 @@ fun GatewayScreen(onBack: () -> Unit) {
             )
             if (running) {
                 Text(
-                    "Reachable at: " + addresses.joinToString { "$it:${GatewayService.PORT}" } +
-                        "\nUse your Tailscale address (100.x.x.x) to reach the phone from anywhere.",
+                    "Local only: 127.0.0.1:${GatewayService.PORT}" +
+                        "\nOn your computer run: adb forward tcp:8787 tcp:8787" +
+                        "\nThen: opencell pair 127.0.0.1. Direct Wi-Fi/Tailscale access is not enabled.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp),

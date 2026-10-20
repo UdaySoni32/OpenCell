@@ -20,3 +20,10 @@ __pycache__/
 dist/
 *.egg-info/
 .pytest_cache/
+
+# Project-local tools and dependency caches
+.cache/
+.tools/
+.env
+.env.*
+!.env.example

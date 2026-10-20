@@ -79,7 +79,7 @@ class SmsRepository(private val context: Context) {
 
     /**
      * Queues [body] to [address]: writes it to the outbox, then sends it. Status updates arrive in [SmsStatusReceiver].
-     * Returns the provider id, or null if the address/body is blank or the write failed.
+     * Returns the provider id, or null if validation, setup, or sending fails immediately.
      */
     suspend fun send(address: String, body: String): Long? = withContext(Dispatchers.IO) {
         val to = address.trim()
@@ -92,14 +92,24 @@ class SmsRepository(private val context: Context) {
             put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_OUTBOX)
             put(Telephony.Sms.STATUS, Telephony.Sms.STATUS_PENDING)
         }
-        val uri = resolver.insert(Telephony.Sms.CONTENT_URI, values) ?: return@withContext null
-        val sms = context.getSystemService(SmsManager::class.java)
-        val parts = sms.divideMessage(body)
-        val sent = ArrayList(parts.indices.map { statusIntent(SmsStatusReceiver.ACTION_SENT, uri, it, parts.size) })
-        val delivered = ArrayList(parts.indices.map { statusIntent(SmsStatusReceiver.ACTION_DELIVERED, uri, it, parts.size) })
-        runCatching { sms.sendMultipartTextMessage(to, null, parts, sent, delivered) }
-            .onFailure { markType(uri, Telephony.Sms.MESSAGE_TYPE_FAILED) }
-        uri.lastPathSegment?.toLongOrNull()
+        val uri = runCatching { resolver.insert(Telephony.Sms.CONTENT_URI, values) }.getOrNull() ?: return@withContext null
+        val id = uri.lastPathSegment?.toLongOrNull() ?: return@withContext null
+        sendSmsOrNull(id, send = {
+            val sms = context.getSystemService(SmsManager::class.java)
+            val parts = sms.divideMessage(body)
+            require(parts.isNotEmpty())
+            val sent = ArrayList(parts.indices.map { statusIntent(SmsStatusReceiver.ACTION_SENT, uri, it, parts.size) })
+            val delivered = ArrayList(parts.indices.map { statusIntent(SmsStatusReceiver.ACTION_DELIVERED, uri, it, parts.size) })
+            SmsStatusReceiver.begin(context, uri, parts.size)
+            sms.sendMultipartTextMessage(to, null, parts, sent, delivered)
+        }, markFailed = {
+            try {
+                SmsStatusReceiver.forget(context, uri)
+            } finally {
+                markType(uri, Telephony.Sms.MESSAGE_TYPE_FAILED)
+                markStatus(uri, Telephony.Sms.STATUS_FAILED)
+            }
+        })
     }
 
     suspend fun markThreadRead(threadId: Long) = withContext(Dispatchers.IO) {
@@ -123,10 +133,12 @@ class SmsRepository(private val context: Context) {
         (uri.toString() + action + part).hashCode(),
         Intent(context, SmsStatusReceiver::class.java)
             .setAction(action)
-            .setData(uri)
+            .setData(uri.buildUpon().fragment("$action:$part").build())
             .putExtra(SmsStatusReceiver.EXTRA_PART, part)
             .putExtra(SmsStatusReceiver.EXTRA_TOTAL, total),
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        // Delivery reports arrive as fill-in PDU extras. The explicit receiver keeps this scoped.
+        (if (action == SmsStatusReceiver.ACTION_DELIVERED) PendingIntent.FLAG_MUTABLE else PendingIntent.FLAG_IMMUTABLE) or
+            PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
     private fun queryMessages(selection: String?, args: Array<String>?, limit: Int): List<SmsMessage> {

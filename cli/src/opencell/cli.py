@@ -16,9 +16,11 @@ app = typer.Typer(help="Control calls and SMS on your OpenCell phone.", no_args_
 sms_app = typer.Typer(help="Send and list SMS.", no_args_is_help=True)
 call_app = typer.Typer(help="Place, list and control calls.", no_args_is_help=True)
 approvals_app = typer.Typer(help="Requests waiting for approval on the phone.", no_args_is_help=True)
+assistant_app = typer.Typer(help="Ask the assistant on the phone.", no_args_is_help=True)
 app.add_typer(sms_app, name="sms")
 app.add_typer(call_app, name="call")
 app.add_typer(approvals_app, name="approvals")
+app.add_typer(assistant_app, name="assistant")
 
 
 def make_client() -> OpenCellClient:
@@ -164,6 +166,14 @@ def approvals_deny(sid: str) -> None:
     with make_client() as client:
         res = _run(lambda: client.decide(sid, False))
     typer.echo(f"{sid}: {res['status']}")
+
+
+@assistant_app.command("ask")
+def assistant_ask(message: str, as_json: bool = typer.Option(False, "--json")) -> None:
+    """Ask the phone assistant; any call/SMS result is returned as a reviewable draft."""
+    with make_client() as client:
+        res = _run(lambda: client.ask_assistant(message))
+    _out(res, as_json, res.get("reply", ""))
 
 
 @app.command()

@@ -38,6 +38,7 @@ class VoiceAgent(
      * i.e. speaker mode where the mic picks up the speakerphone.
      */
     private val halfDuplex: Boolean = false,
+    private val onError: (Throwable) -> Unit = {},
 ) {
     private val history = mutableListOf(ChatMessage(Role.USER, "(The call is connected.)"))
     private val transcript = mutableListOf<TranscriptLine>()
@@ -67,7 +68,10 @@ class VoiceAgent(
         withTimeoutOrNull(maxDurationMs) {
             for (pcm in utterances) {
                 if (pcm.durationMs < MIN_UTTERANCE_MS) continue
-                val turn = runCatching { takeTurn(pcm) }.onFailure { if (it is CancellationException) throw it }
+                val turn = runCatching { takeTurn(pcm) }.onFailure {
+                    if (it is CancellationException) throw it
+                    onError(it)
+                }
                 val result = turn.getOrNull()
                 if (result == null) {
                     if (turn.isFailure && ++failures >= MAX_FAILURES) break

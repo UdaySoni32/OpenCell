@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="OpenCell is an open-source Android phone, SMS, gateway, and personal assistant app.">
+  <title>OpenCell — Your phone, your assistant</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f8f5;
+      --surface: #ffffff;
+      --ink: #102019;
+      --muted: #526159;
+      --green: #0f5132;
+      --green-soft: #c8ebd6;
+      --amber: #8a5a00;
+      --line: #dbe4dc;
+      --shadow: 0 18px 50px rgba(15, 81, 50, .12);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0f1411; --surface: #18201b; --ink: #edf6ef; --muted: #b3c1b6; --line: #2d3b31; --green-soft: #214e36; --shadow: 0 18px 50px rgba(0,0,0,.28); }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    a { color: var(--green); }
+    @media (prefers-color-scheme: dark) { a { color: #8dd5ac; } }
+    .wrap { width: min(1120px, calc(100% - 40px)); margin: auto; }
+    header { padding: 22px 0; border-bottom: 1px solid var(--line); }
+    nav { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 800; letter-spacing: -.02em; }
+    .brand-mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: var(--green); color: #fff; font-size: 19px; }
+    .nav-links { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; }
+    .nav-links a { color: var(--muted); text-decoration: none; }
+    .nav-links a:hover { color: var(--green); }
+    .hero { display: grid; grid-template-columns: 1.15fr .85fr; gap: 60px; align-items: center; padding: 92px 0 80px; }
+    .eyebrow { color: var(--amber); font: 700 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .14em; text-transform: uppercase; }
+    h1, h2, h3 { line-height: 1.1; letter-spacing: -.045em; }
+    h1 { max-width: 720px; margin: 16px 0 22px; font-size: clamp(44px, 7vw, 78px); }
+    h2 { margin: 0 0 14px; font-size: clamp(30px, 4vw, 46px); }
+    h3 { margin: 0 0 8px; font-size: 20px; }
+    .lead { max-width: 650px; margin: 0; color: var(--muted); font-size: 20px; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+    .button { display: inline-block; padding: 12px 18px; border-radius: 12px; background: var(--green); color: #fff; text-decoration: none; font-weight: 750; box-shadow: var(--shadow); }
+    .button.secondary { background: transparent; color: var(--green); border: 1px solid var(--green); box-shadow: none; }
+    .hero-card { padding: 24px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); box-shadow: var(--shadow); }
+    .phone { position: relative; min-height: 390px; overflow: hidden; padding: 20px; border: 10px solid #15231a; border-radius: 36px; background: linear-gradient(145deg, #dff5e7, #8dd5ac); color: #092814; }
+    .phone::after { content: ""; position: absolute; top: 10px; left: 50%; width: 86px; height: 18px; border-radius: 0 0 12px 12px; background: #15231a; transform: translateX(-50%); }
+    .phone-label { margin-top: 32px; font: 700 11px/1.2 ui-monospace, monospace; letter-spacing: .15em; text-transform: uppercase; opacity: .7; }
+    .phone h3 { margin-top: 34px; font-size: 34px; }
+    .chat { display: grid; gap: 12px; margin-top: 28px; }
+    .bubble { max-width: 84%; padding: 11px 14px; border-radius: 16px; font-size: 14px; }
+    .bubble.user { justify-self: end; background: #0f5132; color: white; border-bottom-right-radius: 4px; }
+    .bubble.ai { background: rgba(255,255,255,.75); border-bottom-left-radius: 4px; }
+    section { padding: 78px 0; }
+    .section-head { max-width: 690px; margin-bottom: 30px; }
+    .section-head p { color: var(--muted); font-size: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .card { padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
+    .icon { display: grid; place-items: center; width: 42px; height: 42px; margin-bottom: 18px; border-radius: 12px; background: var(--green-soft); color: var(--green); font-size: 21px; }
+    .card p { margin: 0; color: var(--muted); }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: stretch; }
+    .panel { padding: 30px; border-radius: 22px; background: var(--green); color: white; }
+    .panel h2 { color: white; }
+    .panel p { color: #d5ebdc; }
+    .panel code { display: block; overflow-x: auto; margin-top: 22px; padding: 17px; border-radius: 12px; background: rgba(0,0,0,.22); color: #e7ffed; font: 14px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .steps { display: grid; gap: 14px; }
+    .step { display: grid; grid-template-columns: 36px 1fr; gap: 14px; align-items: start; padding: 16px 0; border-bottom: 1px solid var(--line); }
+    .step-number { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--green-soft); color: var(--green); font-weight: 800; }
+    .step p { margin: 0; color: var(--muted); }
+    .notice { padding: 18px 20px; border-left: 4px solid var(--amber); border-radius: 8px; background: var(--surface); color: var(--muted); }
+    footer { padding: 30px 0 50px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+    footer .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
+    @media (max-width: 800px) { .hero, .split { grid-template-columns: 1fr; gap: 34px; } .hero { padding-top: 60px; } .grid { grid-template-columns: 1fr; } .nav-links { display: none; } }
+  </style>
+</head>
+<body>
+  <header>
+    <nav class="wrap">
+      <a class="brand" href="https://github.com/UdaySoni32/OpenCell"><span class="brand-mark">☎</span> OpenCell</a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#assistant">Assistant</a>
+        <a href="#setup">Setup</a>
+        <a href="https://github.com/UdaySoni32/OpenCell">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="wrap hero">
+      <div>
+        <div class="eyebrow">Open source · Android 11+</div>
+        <h1>Your phone.<br>Your assistant.</h1>
+        <p class="lead">OpenCell is an open-source Phone and SMS app with one call list, a local gateway, and a personal assistant that remembers what you choose to share.</p>
+        <div class="buttons">
+          <a class="button" href="https://github.com/UdaySoni32/OpenCell/releases/latest">Download APK</a>
+          <a class="button secondary" href="https://github.com/UdaySoni32/OpenCell/blob/main/docs/SETUP.md">Read the setup guide</a>
+        </div>
+      </div>
+      <div class="hero-card">
+        <div class="phone">
+          <div class="phone-label">OpenCell assistant</div>
+          <h3>Good morning, Uday.</h3>
+          <div class="chat">
+            <div class="bubble user">Remember that I prefer short replies in Hinglish.</div>
+            <div class="bubble ai">I’ll remember that. You can review or forget it any time.</div>
+            <div class="bubble user">Remind me to call the clinic in 15 minutes.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">One app, your rules</div>
+        <h2>Communication without the lock-in.</h2>
+        <p>OpenCell keeps the phone number and core data on your device. Connect your own AI provider, your own computer, or nothing else.</p>
+      </div>
+      <div class="grid">
+        <article class="card"><div class="icon">☎</div><h3>One call list</h3><p>SIM calls and supported app-call notifications appear together, with callback paths for each source.</p></article>
+        <article class="card"><div class="icon">✉</div><h3>Phone-native SMS</h3><p>Use OpenCell as the default SMS app for threads, delivery state, notifications, and direct sending.</p></article>
+        <article class="card"><div class="icon">⌘</div><h3>Local gateway</h3><p>Pair a computer over Wi-Fi, USB, or Tailscale. Use the CLI, Python library, or MCP server.</p></article>
+        <article class="card"><div class="icon">✦</div><h3>Bring your own AI</h3><p>Use Ollama, OpenAI-compatible endpoints, Anthropic, Gemini, Groq, or the optional speech server.</p></article>
+        <article class="card"><div class="icon">✓</div><h3>Permission first</h3><p>Calls and messages pass through one policy with approvals, scopes, a kill switch, and an audit log.</p></article>
+        <article class="card"><div class="icon">◌</div><h3>Voice modes</h3><p>Use Shizuku or speakerphone modes for AI-assisted calls, with text fallback when audio is unavailable.</p></article>
+      </div>
+    </section>
+
+    <section id="assistant" class="wrap split">
+      <div class="panel">
+        <div class="eyebrow">Personal assistant</div>
+        <h2>Memory that stays under your control.</h2>
+        <p>Tell OpenCell what matters. Explicit memories are saved immediately; inferred memories remain reviewable until you confirm them. Delete or edit anything from the app.</p>
+        <code>Remember that I prefer short replies in Hinglish.<br><br>Remind me to call the clinic in 15 minutes.<br><br>What should I follow up on?</code>
+      </div>
+      <div class="card">
+        <h3>Built for useful context</h3>
+        <div class="steps">
+          <div class="step"><span class="step-number">1</span><div><strong>Chat</strong><p>Ask the assistant from the phone or through the gateway.</p></div></div>
+          <div class="step"><span class="step-number">2</span><div><strong>Remember</strong><p>Save preferences, relationships, commitments, and tasks with clear source labels.</p></div></div>
+          <div class="step"><span class="step-number">3</span><div><strong>Review</strong><p>Confirm, edit, or forget inferred memories before they become context.</p></div></div>
+          <div class="step"><span class="step-number">4</span><div><strong>Act</strong><p>SMS and call drafts are previewed and routed through the phone's policy.</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="setup" class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Start in minutes</div>
+        <h2>Install it on the phone you already have.</h2>
+        <p>No OpenCell account, VoIP number, or OpenCell cloud is required.</p>
+      </div>
+      <div class="grid">
+        <article class="card"><div class="icon">1</div><h3>Install the APK</h3><p>Download the latest release and make OpenCell the default Phone and SMS app during the guided setup.</p></article>
+        <article class="card"><div class="icon">2</div><h3>Choose your AI</h3><p>Configure your own provider in Settings. Keys are stored with Android Keystore encryption.</p></article>
+        <article class="card"><div class="icon">3</div><h3>Pair your computer</h3><p>Enable Computers &amp; API, pair with a six-digit code, then use <code>opencell</code> from any supported OS.</p></article>
+      </div>
+      <p class="notice" style="margin-top: 24px"><strong>Privacy note:</strong> call recording and learning from calls are opt-in. Laws about AI-assisted calls and recording vary by location.</p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap foot">
+      <span>OpenCell · Apache-2.0</span>
+      <span><a href="https://github.com/UdaySoni32/OpenCell/blob/main/docs/SETUP.md">Setup</a> · <a href="https://github.com/UdaySoni32/OpenCell/issues">Issues</a> · <a href="https://github.com/UdaySoni32/OpenCell">Source</a></span>
+    </div>
+  </footer>
+</body>
+</html>

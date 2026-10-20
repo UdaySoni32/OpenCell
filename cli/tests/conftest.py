@@ -49,6 +49,9 @@ class FakeGateway:
             return httpx.Response(201, json={"status": "done", "sid": path.rsplit("/", 1)[1]})
         if path == "/v1/Approvals":
             return httpx.Response(200, json=[{"sid": "AP1", "actor": "computer \"t\"", "action": "send_sms", "target": "+1555", "body": "x", "status": "pending", "date_created": 0}])
+        if path == "/v1/Assistant" and method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(200, json={"status": "answer", "reply": f"You asked: {body['message']}"})
         return httpx.Response(404, json={"error": "not found"})
 
 

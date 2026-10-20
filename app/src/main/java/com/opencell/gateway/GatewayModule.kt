@@ -33,6 +33,7 @@ private val wireJson = Json {
 private const val MAX_LIMIT = 500
 private const val MAX_SMS_LENGTH = 1600
 private const val MAX_GOAL_LENGTH = 500
+private const val MAX_ASSISTANT_MESSAGE_LENGTH = 4000
 
 /** HTTP + WebSocket API. Auth: `Authorization: Bearer <token>` (WebSocket may use `?token=`). */
 fun Application.gatewayModule(backend: GatewayBackend) {
@@ -113,6 +114,15 @@ fun Application.gatewayModule(backend: GatewayBackend) {
             call.respond(backend.listApprovals())
         }
 
+        post("/v1/Assistant") {
+            val device = call.authorized(backend, Scope.READ) ?: return@post
+            val req = call.receive<AssistantRequest>()
+            if (req.message.isBlank() || req.message.length > MAX_ASSISTANT_MESSAGE_LENGTH) {
+                return@post call.respond(HttpStatusCode.BadRequest, ErrorDto("'message' must be 1..$MAX_ASSISTANT_MESSAGE_LENGTH characters"))
+            }
+            call.respond(backend.askAssistant(device, req.message.trim()))
+        }
+
         post("/v1/Approvals/{sid}") {
             val device = call.authorized(backend, Scope.APPROVE) ?: return@post
             val id = Sids.parseLong("AP", call.parameters["sid"].orEmpty())
@@ -131,7 +141,15 @@ fun Application.gatewayModule(backend: GatewayBackend) {
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "unauthorized"))
                 return@webSocket
             }
-            backend.events().collect { send(Frame.Text(wireJson.encodeToString(EventDto.serializer(), it))) }
+            backend.events().collect {
+                // Tokens can be revoked or lose scopes while a socket remains open.
+                val current = token?.let { value -> backend.authenticate(value) }
+                if (current == null || Scope.READ !in current.scopes) {
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "authorization revoked"))
+                    return@collect
+                }
+                send(Frame.Text(wireJson.encodeToString(EventDto.serializer(), it)))
+            }
         }
     }
 }

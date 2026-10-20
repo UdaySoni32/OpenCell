@@ -9,6 +9,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -17,11 +19,13 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,6 +35,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.opencell.AppContainer
 import com.opencell.memory.MemoryFact
+import com.opencell.memory.MemorySourceType
 import com.opencell.ui.appViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -40,8 +45,20 @@ class MemoryViewModel(private val container: AppContainer) : ViewModel() {
     private val dao = container.database.memoryDao()
     val facts = dao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     fun delete(f: MemoryFact) = viewModelScope.launch { dao.delete(f) }
+    fun confirm(f: MemoryFact) = viewModelScope.launch { dao.confirm(f.id) }
+    fun updateText(f: MemoryFact, text: String) = viewModelScope.launch { dao.updateText(f.id, text.trim().take(300)) }
     fun add(text: String) = viewModelScope.launch {
-        dao.insert(MemoryFact(contactKey = null, text = text.trim().take(200), source = "added by you", createdAtMillis = System.currentTimeMillis()))
+        val now = System.currentTimeMillis()
+        dao.insert(
+            MemoryFact(
+                contactKey = null,
+                text = text.trim().take(300),
+                source = "added by you",
+                createdAtMillis = now,
+                sourceType = MemorySourceType.USER_CONFIRMED,
+                updatedAtMillis = now,
+            ),
+        )
     }
 }
 
@@ -51,6 +68,7 @@ fun MemoryScreen(onBack: () -> Unit) {
     val vm = appViewModel { MemoryViewModel(it) }
     val facts by vm.facts.collectAsState()
     var draft by rememberSaveable { mutableStateOf("") }
+    var editing by remember { mutableStateOf<MemoryFact?>(null) }
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("What it remembers") },
@@ -67,10 +85,40 @@ fun MemoryScreen(onBack: () -> Unit) {
             items(facts, key = { it.id }) { f ->
                 ListItem(
                     headlineContent = { Text(f.text) },
-                    supportingContent = { Text(if (f.contactKey == null) "About you · ${f.source}" else "About …${f.contactKey.takeLast(4)} · ${f.source}") },
-                    trailingContent = { IconButton(onClick = { vm.delete(f) }) { Icon(Icons.Filled.Delete, "Forget") } },
+                    supportingContent = {
+                        Column {
+                            Text(if (f.contactKey == null) "About you · ${f.source}" else "About …${f.contactKey.takeLast(4)} · ${f.source}")
+                            if (f.needsConfirmation) Text("Review before the assistant uses this", color = MaterialTheme.colorScheme.secondary)
+                        }
+                    },
+                    trailingContent = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (f.needsConfirmation) FilledTonalButton(onClick = { vm.confirm(f) }) { Text("Keep") }
+                            IconButton(onClick = { editing = f }) { Icon(Icons.Filled.Edit, "Edit") }
+                            IconButton(onClick = { vm.delete(f) }) { Icon(Icons.Filled.Delete, "Forget") }
+                        }
+                    },
                 )
             }
         }
     }
+    editing?.let { fact ->
+        MemoryEditDialog(
+            fact = fact,
+            onDismiss = { editing = null },
+            onSave = { text -> vm.updateText(fact, text); editing = null },
+        )
+    }
+}
+
+@Composable
+private fun MemoryEditDialog(fact: MemoryFact, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var text by rememberSaveable(fact.id) { mutableStateOf(fact.text) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit memory") },
+        text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = false, minLines = 2) },
+        confirmButton = { TextButton(onClick = { onSave(text) }, enabled = text.isNotBlank()) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

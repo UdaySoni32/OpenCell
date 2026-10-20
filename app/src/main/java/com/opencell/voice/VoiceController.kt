@@ -11,9 +11,12 @@ import com.opencell.ai.SpeechConfig
 import com.opencell.ai.SpeechKind
 import com.opencell.contacts.ContactsRepository
 import com.opencell.memory.MemoryDao
+import com.opencell.memory.MemoryCategory
 import com.opencell.memory.MemoryFact
 import com.opencell.memory.PromptBuilder
+import com.opencell.memory.MemorySourceType
 import com.opencell.memory.ThreadLine
+import com.opencell.assistant.AssistantTaskDao
 import com.opencell.policy.ActionExecutor
 import com.opencell.policy.ActionPolicy
 import com.opencell.policy.ActionRequest
@@ -35,7 +38,6 @@ import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.concurrent.ConcurrentHashMap
 
 data class VoiceSession(val callId: String, val mode: CallAudioMode, val listenOnly: Boolean, val lines: List<TranscriptLine> = emptyList(), val status: String = "starting")
 
@@ -48,6 +50,7 @@ class VoiceController(
     private val executor: ActionExecutor,
     private val contacts: ContactsRepository,
     private val memory: MemoryDao,
+    private val tasks: AssistantTaskDao,
     private val notifier: AssistantNotifier,
 ) {
     val shizuku = ShizukuCallAudio(context)
@@ -58,34 +61,24 @@ class VoiceController(
     val session: StateFlow<VoiceSession?> = _session.asStateFlow()
     private var job: Job? = null
 
-    /** Goals for calls the AI was asked to place, keyed by number, consumed when that call connects. */
-    private data class PendingGoal(val goal: String, val atMillis: Long)
-    private val pendingGoals = ConcurrentHashMap<String, PendingGoal>()
+    private val outgoingGoals = OutgoingVoiceGoals()
 
     fun capabilities() = AudioCapabilities(
         shizukuReady = shizuku.status() == ShizukuCallAudio.Status.READY,
         hasMicPermission = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED,
     )
 
-    fun rememberGoal(number: String, goal: String) {
-        ActionPolicy.numberKey(number)?.let { pendingGoals[it] = PendingGoal(goal.take(500), System.currentTimeMillis()) }
-    }
-
-    fun forgetGoal(number: String) {
-        ActionPolicy.numberKey(number)?.let { pendingGoals.remove(it) }
-    }
-
-    /** A goal only applies to a call that connects soon after the request; never to a later manual call. */
-    private fun takeGoal(key: String): String? =
-        pendingGoals.remove(key)?.takeIf { System.currentTimeMillis() - it.atMillis < GOAL_TTL_MS }?.goal
+    /** Called only by the executing action handler. The placer must attach the token to its call. */
+    fun placeCall(goal: String?, place: (String?) -> Boolean): Boolean = outgoingGoals.placeCall(goal, place)
 
     /** Called on every call state change (from the container's call event loop). */
     fun onCallState(callId: String, number: String?, state: CallState, isIncoming: Boolean) {
-        val key = number?.let(ActionPolicy::numberKey)
+        val token = calls.voiceGoalToken(callId)
         when {
+            state == CallState.DISCONNECTED -> outgoingGoals.discard(token)
             state == CallState.RINGING && isIncoming -> scope.launch { maybeAutoPickup(callId, number) }
-            state == CallState.ACTIVE && !isIncoming && key != null && pendingGoals.containsKey(key) ->
-                takeGoal(key)?.let { goal -> handle(callId, goal) }
+            state == CallState.ACTIVE && !isIncoming ->
+                outgoingGoals.take(token)?.let { goal -> handle(callId, goal) }
             state == CallState.ACTIVE && isIncoming && _session.value == null -> scope.launch { maybeListen(callId) }
         }
     }
@@ -123,7 +116,8 @@ class VoiceController(
         val number = call.number.orEmpty()
         val label = call.name ?: withContext(Dispatchers.IO) { contacts.nameFor(number) } ?: number.ifEmpty { "the caller" }
         val facts = memory.relevant(ActionPolicy.numberKey(number))
-        val system = PromptBuilder.voiceCall(settings.userName, ai.currentInstructions(), facts, label, goal, VoiceAgent.END_MARKER)
+        val openTasks = tasks.openTasks().take(8).map { it.title }
+        val system = PromptBuilder.voiceCall(settings.userName, ai.currentInstructions(), facts, label, goal, VoiceAgent.END_MARKER, openTasks)
         val opening = if (goal != null) null else greeting(settings.userName)
 
         calls.setSpeaker(true) // the far end hears the assistant through the speakerphone in every mode
@@ -206,9 +200,22 @@ class VoiceController(
         val key = number?.let(ActionPolicy::numberKey)
         val prompt = PromptBuilder.factExtraction(label, lines)
         val answer = runCatching { withContext(Dispatchers.IO) { llm.complete(prompt.system, prompt.messages, 300) } }.getOrNull() ?: return
-        val known = memory.relevant(key, 200).map { it.text.lowercase() }.toSet()
+        val known = memory.relevant(key, 200, includeUnconfirmed = true).map { it.text.lowercase() }.toSet()
         PromptBuilder.parseFacts(answer, label).filter { it.second.lowercase() !in known }.forEach { (aboutUser, text) ->
-            memory.insert(MemoryFact(contactKey = if (aboutUser) null else key, text = text, source = "call with $label", createdAtMillis = System.currentTimeMillis()))
+            val at = System.currentTimeMillis()
+            memory.insert(
+                MemoryFact(
+                    contactKey = if (aboutUser) null else key,
+                    text = text,
+                    source = "call with $label",
+                    createdAtMillis = at,
+                    category = MemoryCategory.GENERAL,
+                    sourceType = MemorySourceType.CALL,
+                    confidence = 0.75,
+                    needsConfirmation = true,
+                    updatedAtMillis = at,
+                ),
+            )
         }
     }
 
@@ -229,7 +236,6 @@ class VoiceController(
 
     companion object {
         private const val TAG = "VoiceController"
-        private const val GOAL_TTL_MS = 10 * 60_000L
 
         fun greeting(userName: String): String = if (userName.isBlank()) {
             "Hi, this is an AI assistant answering for this number. They can't come to the phone right now. Who's calling, please?"

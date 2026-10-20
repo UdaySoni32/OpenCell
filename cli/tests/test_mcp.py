@@ -10,7 +10,7 @@ def _call(server, name, args):
 
 def test_lists_all_tools(client):
     tools = {t.name for t in asyncio.run(build_server(client).list_tools())}
-    assert tools == {"send_sms", "list_messages", "place_call", "list_calls", "active_calls", "control_call", "list_approvals"}
+    assert tools == {"send_sms", "list_messages", "place_call", "list_calls", "active_calls", "control_call", "list_approvals", "ask_assistant"}
 
 
 def test_send_sms_returns_pending(client, gateway):
@@ -28,3 +28,8 @@ def test_errors_become_readable_results(client, gateway):
 def test_control_call_rejects_bad_action(client):
     out = _call(build_server(client), "control_call", {"sid": "CA0", "action": "explode"})
     assert "action must be" in str(out)
+
+
+def test_ask_assistant_is_readable(client):
+    out = _call(build_server(client), "ask_assistant", {"message": "hello"})
+    assert "You asked: hello" in out

@@ -163,6 +163,10 @@
             android:name=".sms.SmsStatusReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".assistant.AssistantReminderReceiver"
+            android:exported="false" />
+
         <service
             android:name=".sms.RespondViaMessageService"
             android:exported="true"

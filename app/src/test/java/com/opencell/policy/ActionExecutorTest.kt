@@ -1,9 +1,12 @@
 package com.opencell.policy
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -37,8 +40,12 @@ class FakePolicyDao : PolicyDao {
 class FakeHandlers : ActionHandlers {
     val sent = mutableListOf<Pair<String, String>>()
     var smsFails = false
-    override suspend fun sendSms(to: String, body: String): Long? = if (smsFails) null else { sent += to to body; sent.size.toLong() }
-    override fun placeCall(to: String) = true
+    var beforeSend: suspend () -> Unit = {}
+    override suspend fun sendSms(to: String, body: String): Long? {
+        beforeSend()
+        return if (smsFails) null else { sent += to to body; sent.size.toLong() }
+    }
+    override fun placeCall(to: String, goal: String?) = true
     override fun controlCall(type: ActionType, callId: String) = callId == "call-0"
 }
 
@@ -84,6 +91,103 @@ class ActionExecutorTest {
         settings = PolicySettings(mode = PolicyMode.FULL_AUTO, dailyLimit = 1)
         assertTrue(executor.submit(ActionRequest(device, ActionType.SEND_SMS, "1", "a")) is ActionResult.Done)
         assertTrue(executor.submit(ActionRequest(device, ActionType.SEND_SMS, "1", "b")) is ActionResult.Pending)
+    }
+
+    @Test
+    fun `concurrent approvals execute a pending action at most once`() = runTest {
+        executor.submit(ActionRequest(device, ActionType.SEND_SMS, "1", "hello"))
+        handlers.beforeSend = { yield() }
+
+        val decisions = List(10) {
+            async { executor.decide(1, approve = true, decidedBy = "you") }
+        }.awaitAll()
+
+        assertEquals(1, decisions.count { it != null })
+        assertEquals(listOf("1" to "hello"), handlers.sent)
+        assertEquals(listOf(1L), prompter.dismissed)
+        assertEquals(1, dao.audit.count { it.outcome == Outcome.DONE })
+    }
+
+    @Test
+    fun `concurrent immediate submissions respect the daily limit`() = runTest {
+        settings = PolicySettings(mode = PolicyMode.FULL_AUTO, dailyLimit = 1)
+        handlers.beforeSend = { yield() }
+
+        val results = List(10) { index ->
+            async { executor.submit(ActionRequest(device, ActionType.SEND_SMS, "1", "message $index")) }
+        }.awaitAll()
+
+        assertEquals(1, results.count { it is ActionResult.Done })
+        assertEquals(9, results.count { it is ActionResult.Pending })
+        assertEquals(1, handlers.sent.size)
+        assertEquals(1, dao.countOutboundSince(0))
+    }
+
+    @Test
+    fun `submission waits for an in flight approval to count toward the limit`() = runTest {
+        executor.submit(ActionRequest(device, ActionType.SEND_SMS, "1", "approved"))
+        settings = PolicySettings(mode = PolicyMode.FULL_AUTO, dailyLimit = 1)
+        handlers.beforeSend = { yield() }
+
+        val approval = async { executor.decide(1, true, "you") }
+        val submission = async { executor.submit(ActionRequest(device, ActionType.SEND_SMS, "1", "automatic")) }
+
+        assertEquals(ApprovalStatus.APPROVED, approval.await()!!.status)
+        assertTrue(submission.await() is ActionResult.Pending)
+        assertEquals(listOf("1" to "approved"), handlers.sent)
+    }
+
+    @Test
+    fun `approval cannot execute again if audit persistence fails after sending`() = runTest {
+        val failingDao = object : PolicyDao by dao {
+            override suspend fun insertAudit(entry: AuditEntry): Long {
+                check(entry.outcome != Outcome.DONE) { "audit unavailable" }
+                return dao.insertAudit(entry)
+            }
+        }
+        val interruptedExecutor = ActionExecutor(failingDao, { settings }, handlers, prompter)
+        interruptedExecutor.submit(ActionRequest(device, ActionType.SEND_SMS, "1", "hello"))
+
+        assertTrue(runCatching { interruptedExecutor.decide(1, true, "you") }.isFailure)
+        assertNull(interruptedExecutor.decide(1, true, "you"))
+        assertEquals(listOf("1" to "hello"), handlers.sent)
+        assertEquals(ApprovalStatus.APPROVED, dao.approval(1)!!.status)
+    }
+
+    @Test
+    fun `remote approval checks the current kill switch and leaves local approval available`() = runTest {
+        executor.submit(ActionRequest(device, ActionType.SEND_SMS, "1", "hello"))
+        settings = PolicySettings(killSwitch = true, dailyLimit = 0)
+        val approver = device.copy(scopes = setOf(Scope.APPROVE))
+
+        assertNull(executor.decide(1, true, approver.label, decidingActor = approver))
+        assertTrue(handlers.sent.isEmpty())
+        assertEquals(ApprovalStatus.PENDING, dao.approval(1)!!.status)
+        assertTrue(prompter.dismissed.isEmpty())
+        assertEquals(Outcome.DENIED, dao.audit.last().outcome)
+        assertEquals("kill switch is on", dao.audit.last().detail)
+
+        assertEquals(ApprovalStatus.APPROVED, executor.decide(1, true, "you", decidingActor = Actor.User)!!.status)
+        assertEquals(listOf("1" to "hello"), handlers.sent)
+    }
+
+    @Test
+    fun `remote explicit approval bypasses automatic asking and daily limit`() = runTest {
+        executor.submit(ActionRequest(device, ActionType.SEND_SMS, "1", "hello"))
+        settings = PolicySettings(mode = PolicyMode.ASK, dailyLimit = 0)
+        val approver = device.copy(scopes = setOf(Scope.APPROVE))
+
+        assertEquals(ApprovalStatus.APPROVED, executor.decide(1, true, approver.label, decidingActor = approver)!!.status)
+        assertEquals(listOf("1" to "hello"), handlers.sent)
+    }
+
+    @Test
+    fun `remote denial remains available with kill switch on`() = runTest {
+        executor.submit(ActionRequest(device, ActionType.SEND_SMS, "1", "hello"))
+        settings = PolicySettings(killSwitch = true)
+
+        assertEquals(ApprovalStatus.DENIED, executor.decide(1, false, device.label, decidingActor = device)!!.status)
+        assertTrue(handlers.sent.isEmpty())
     }
 
     @Test

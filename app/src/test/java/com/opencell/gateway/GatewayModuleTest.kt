@@ -8,6 +8,8 @@ import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.plugins.websocket.WebSockets as ClientWebSockets
+import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
@@ -15,6 +17,11 @@ import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
+import io.ktor.websocket.CloseReason
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -25,9 +32,12 @@ private class FakeBackend : GatewayBackend {
     val readOnly = Actor.Device(2, "pi", setOf(Scope.READ))
     var smsResult: ActionResult = ActionResult.Pending(7)
     val sent = mutableListOf<Pair<String, String>>()
+    var revoked = false
+    var loseReadScope = false
+    var eventFlow: Flow<EventDto> = emptyFlow()
 
     override suspend fun authenticate(token: String) = when (token) {
-        "full" -> full
+        "full" -> if (revoked) null else if (loseReadScope) full.copy(scopes = emptySet()) else full
         "ro" -> readOnly
         else -> null
     }
@@ -49,7 +59,8 @@ private class FakeBackend : GatewayBackend {
     }
     override suspend fun submitCallAction(device: Actor.Device, callSid: String, action: String) = ActionResult.Failed("no such call")
     override suspend fun decideApproval(device: Actor.Device, approvalId: Long, approve: Boolean) = null
-    override fun events(): Flow<EventDto> = emptyFlow()
+    override suspend fun askAssistant(device: Actor.Device, message: String) = AssistantResponse("answer", "hello $message")
+    override fun events(): Flow<EventDto> = eventFlow
 }
 
 class GatewayModuleTest {
@@ -58,6 +69,32 @@ class GatewayModuleTest {
     private fun test(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
         application { gatewayModule(backend) }
         block()
+    }
+
+    @Test
+    fun `event stream does not disclose events after token revocation`() = eventAuthorizationTest(false)
+
+    @Test
+    fun `event stream does not disclose events after read scope removed`() = eventAuthorizationTest(true)
+
+    private fun eventAuthorizationTest(removeScope: Boolean) = test {
+        backend.eventFlow = flow {
+            emit(EventDto("before", 1, emptyMap()))
+            if (removeScope) backend.loseReadScope = true else backend.revoked = true
+            emit(EventDto("private-after", 2, emptyMap()))
+        }
+        val ws = createClient { install(ClientWebSockets) }
+        withTimeout(5000) {
+            ws.webSocket("/v1/Events", request = { header("Authorization", "Bearer full") }) {
+                val first = incoming.receive() as Frame.Text
+                assertTrue(first.readText().contains("before"))
+                val remaining = mutableListOf<String>()
+                for (frame in incoming) if (frame is Frame.Text) remaining += frame.readText()
+                assertTrue(remaining.none { it.contains("private-after") })
+                assertEquals(CloseReason.Codes.VIOLATED_POLICY.code, closeReason.await()?.code)
+            }
+        }
+        ws.close()
     }
 
     @Test
@@ -179,5 +216,16 @@ class GatewayModuleTest {
         assertEquals(null, Sids.callId("XX3"))
         assertEquals(5L, Sids.parseLong("SM", "SM5"))
         assertEquals(null, Sids.parseLong("SM", "AP5"))
+    }
+
+    @Test
+    fun `assistant endpoint requires read scope and returns a response`() = test {
+        val res = client.post("/v1/Assistant") {
+            header("Authorization", "Bearer ro")
+            contentType(ContentType.Application.Json)
+            setBody("""{"message":"what should I do?"}""")
+        }
+        assertEquals(HttpStatusCode.OK, res.status)
+        assertTrue(res.bodyAsText().contains("hello what should I do?"))
     }
 }

@@ -2,11 +2,13 @@ package com.opencell.gateway
 
 import com.opencell.AppContainer
 import com.opencell.AppEvent
+import com.opencell.assistant.AssistantIntent
 import com.opencell.policy.ActionRequest
 import com.opencell.policy.ActionResult
 import com.opencell.policy.ActionType
 import com.opencell.policy.Actor
 import com.opencell.policy.ApprovalEntity
+import com.opencell.policy.CallGoal
 import com.opencell.sms.SmsMessage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -35,14 +37,8 @@ class AndroidGatewayBackend(private val container: AppContainer, override val ve
     override suspend fun submitSms(device: Actor.Device, to: String, body: String) =
         container.actionExecutor.submit(ActionRequest(device, ActionType.SEND_SMS, to, body))
 
-    override suspend fun submitCall(device: Actor.Device, to: String, agentGoal: String?): ActionResult {
-        // Remember the goal first: with approval the call may connect long after this request returns.
-        agentGoal?.let { container.voiceController.rememberGoal(to, it) }
-        val body = agentGoal?.let { "AI voice agent goal: $it" }
-        val result = container.actionExecutor.submit(ActionRequest(device, ActionType.PLACE_CALL, to, body))
-        if (result is ActionResult.Denied || result is ActionResult.Failed) container.voiceController.forgetGoal(to)
-        return result
-    }
+    override suspend fun submitCall(device: Actor.Device, to: String, agentGoal: String?): ActionResult =
+        container.actionExecutor.submit(ActionRequest(device, ActionType.PLACE_CALL, to, CallGoal.body(agentGoal)))
 
     override suspend fun submitCallAction(device: Actor.Device, callSid: String, action: String): ActionResult {
         val callId = Sids.callId(callSid) ?: return ActionResult.Failed("no such call")
@@ -55,7 +51,23 @@ class AndroidGatewayBackend(private val container: AppContainer, override val ve
     }
 
     override suspend fun decideApproval(device: Actor.Device, approvalId: Long, approve: Boolean) =
-        container.actionExecutor.decide(approvalId, approve, decidedBy = device.label)?.toDto()
+        container.actionExecutor.decide(approvalId, approve, decidedBy = device.label, decidingActor = device)?.toDto()
+
+    override suspend fun askAssistant(device: Actor.Device, message: String): AssistantResponse {
+        // Remote asks are stateless; decide adds the current user turn to this empty history.
+        val result = container.assistantOrchestrator.decide(message, emptyList())
+        val decision = result.getOrElse { return AssistantResponse("error", it.message ?: "The assistant could not respond.") }
+        return when (val intent = decision.intent) {
+            is AssistantIntent.Answer -> AssistantResponse("answer", intent.message)
+            is AssistantIntent.AskClarification -> AssistantResponse("clarify", intent.message)
+            is AssistantIntent.Remember -> AssistantResponse("memory_candidate", "I found a possible memory: ${intent.text}", "remember")
+            is AssistantIntent.Forget -> AssistantResponse("memory_candidate", "Review this memory for deletion: ${intent.text}", "forget")
+            is AssistantIntent.SendSms -> AssistantResponse("action_draft", "I drafted an SMS to ${intent.to}: ${intent.body}", "send_sms", intent.to, intent.body)
+            is AssistantIntent.CreateTask -> AssistantResponse("task_draft", "I drafted a task: ${intent.title}", "create_task")
+            is AssistantIntent.CompleteTask -> AssistantResponse("task_draft", "I found a task to complete: ${intent.title}", "complete_task")
+            is AssistantIntent.CreateReminder -> AssistantResponse("reminder_draft", "I drafted a reminder: ${intent.title}", "create_reminder")
+        }
+    }
 
     override fun events(): Flow<EventDto> = container.events.map { it.toDto() }
 

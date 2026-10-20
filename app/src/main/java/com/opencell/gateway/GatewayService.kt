@@ -22,10 +22,8 @@ import io.ktor.server.engine.embeddedServer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.net.Inet4Address
-import java.net.NetworkInterface
 
-/** Foreground service hosting the local API on [PORT]. Reachable on LAN, USB (adb forward) and Tailscale addresses. */
+/** Loopback-only local API on [PORT]. Computers connect through USB (adb forward). */
 class GatewayService : Service() {
 
     private var server: CIOApplicationEngine? = null
@@ -69,7 +67,7 @@ class GatewayService : Service() {
         NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("OpenCell gateway is on")
-            .setContentText("Port $PORT · ${localAddresses().joinToString().ifEmpty { "no network" }}")
+            .setContentText("127.0.0.1:$PORT · USB forwarding required")
             .setOngoing(true)
             .setContentIntent(
                 PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE),
@@ -94,14 +92,5 @@ class GatewayService : Service() {
             context.stopService(Intent(context, GatewayService::class.java))
         }
 
-        /** IPv4 addresses computers can reach: Wi-Fi/LAN, hotspot, and Tailscale (100.x). */
-        fun localAddresses(): List<String> = runCatching {
-            NetworkInterface.getNetworkInterfaces().toList()
-                .filter { it.isUp && !it.isLoopback }
-                .flatMap { it.inetAddresses.toList() }
-                .filterIsInstance<Inet4Address>()
-                .map { it.hostAddress.orEmpty() }
-                .filter { it.isNotEmpty() }
-        }.getOrDefault(emptyList())
     }
 }

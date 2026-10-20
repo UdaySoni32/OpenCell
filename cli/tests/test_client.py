@@ -45,3 +45,7 @@ def test_call_action_validates_locally(client):
 def test_url_for():
     assert OpenCellClient.url_for("100.64.1.2") == "http://100.64.1.2:8787"
     assert OpenCellClient.url_for("https://phone.ts.net") == "https://phone.ts.net"
+
+
+def test_ask_assistant_returns_a_draft_or_answer(client):
+    assert client.ask_assistant("hello") == {"status": "answer", "reply": "You asked: hello"}

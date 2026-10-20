@@ -62,4 +62,9 @@ def build_server(client: OpenCellClient) -> MCPServer:
         """Actions waiting for (or decided by) the user on the phone."""
         return _safe(client.approvals)
 
+    @server.tool()
+    def ask_assistant(message: str) -> dict:
+        """Ask the phone's personal assistant. SMS/call results are drafts and require review."""
+        return _safe(lambda: client.ask_assistant(message))
+
     return server

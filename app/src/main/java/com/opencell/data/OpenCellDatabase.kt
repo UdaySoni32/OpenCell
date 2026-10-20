@@ -5,6 +5,12 @@ import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.opencell.assistant.AssistantDao
+import com.opencell.assistant.AssistantMessage
+import com.opencell.assistant.AssistantReminder
+import com.opencell.assistant.AssistantTask
+import com.opencell.assistant.AssistantTaskDao
+import com.opencell.assistant.AssistantThread
 import com.opencell.calllog.AppCallDao
 import com.opencell.calllog.AppCallEntity
 import com.opencell.gateway.PairedDeviceDao
@@ -16,16 +22,34 @@ import com.opencell.policy.AuditEntry
 import com.opencell.policy.PolicyDao
 
 @Database(
-    entities = [AppCallEntity::class, AuditEntry::class, ApprovalEntity::class, PairedDeviceEntity::class, MemoryFact::class],
-    version = 3,
+    entities = [
+        AppCallEntity::class,
+        AuditEntry::class,
+        ApprovalEntity::class,
+        PairedDeviceEntity::class,
+        MemoryFact::class,
+        AssistantThread::class,
+        AssistantMessage::class,
+        AssistantTask::class,
+        AssistantReminder::class,
+    ],
+    version = 6,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations = [
+        AutoMigration(from = 1, to = 2),
+        AutoMigration(from = 2, to = 3),
+        AutoMigration(from = 3, to = 4),
+        AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 5, to = 6),
+    ],
 )
 abstract class OpenCellDatabase : RoomDatabase() {
     abstract fun appCallDao(): AppCallDao
     abstract fun memoryDao(): MemoryDao
     abstract fun policyDao(): PolicyDao
     abstract fun pairedDeviceDao(): PairedDeviceDao
+    abstract fun assistantDao(): AssistantDao
+    abstract fun assistantTaskDao(): AssistantTaskDao
 
     companion object {
         fun create(context: Context): OpenCellDatabase =

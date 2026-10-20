@@ -27,11 +27,17 @@ class AndroidTts(private val context: Context) : TtsEngine {
     override val label = "on-device text-to-speech"
 
     @Volatile private var tts: TextToSpeech? = null
+    @Volatile private var closed = false
     private val ready = CountDownLatch(1)
 
     init {
         Handler(Looper.getMainLooper()).post {
-            tts = TextToSpeech(context) { ready.countDown() }
+            val engine = TextToSpeech(context) { if (!closed) ready.countDown() }
+            tts = engine
+            if (closed) {
+                engine.shutdown()
+                tts = null
+            }
         }
     }
 
@@ -56,6 +62,14 @@ class AndroidTts(private val context: Context) : TtsEngine {
             return Wav.decode(file.readBytes())
         } finally {
             file.delete()
+        }
+    }
+
+    fun shutdown() {
+        closed = true
+        Handler(Looper.getMainLooper()).post {
+            tts?.shutdown()
+            tts = null
         }
     }
 
