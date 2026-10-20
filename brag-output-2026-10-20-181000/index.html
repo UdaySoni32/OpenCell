@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1920, height=1080" />
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #f7f8f5; }
+    body { color: #102019; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; }
+    #root { position: relative; width: 100%; height: 100%; overflow: hidden; }
+    .bg { position: absolute; inset: 0; background: #f7f8f5; }
+    .orb { position: absolute; width: 760px; height: 760px; right: -210px; top: -220px; border-radius: 50%; background: #c8ebd6; opacity: .58; }
+    .orb-two { position: absolute; width: 420px; height: 420px; left: -170px; bottom: -220px; border-radius: 50%; background: #e8f5eb; }
+    .eyebrow { color: #8a5a00; font: 700 22px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .16em; text-transform: uppercase; }
+    .headline { max-width: 850px; font-size: 102px; line-height: .95; letter-spacing: -.07em; font-weight: 800; }
+    .subline { color: #102019; font-size: 30px; line-height: 1.25; }
+    .mark { display: grid; place-items: center; width: 86px; height: 86px; border-radius: 25px; background: #0f5132; color: #fff; font-size: 48px; box-shadow: 0 18px 50px rgba(15,81,50,.2); }
+    .phone { position: absolute; right: 130px; top: 130px; width: 555px; height: 820px; padding: 34px; border: 15px solid #15231a; border-radius: 54px; background: linear-gradient(145deg, #dff5e7, #8dd5ac); color: #092814; box-shadow: 0 28px 70px rgba(15,81,50,.2); }
+    .phone-notch { position: absolute; top: -1px; left: 50%; width: 130px; height: 28px; border-radius: 0 0 18px 18px; background: #15231a; transform: translateX(-50%); }
+    .phone-label { margin-top: 50px; color: #315a40; font: 700 16px/1.2 ui-monospace, monospace; letter-spacing: .15em; text-transform: uppercase; }
+    .phone-title { margin-top: 26px; font-size: 44px; line-height: 1; letter-spacing: -.05em; font-weight: 800; }
+    .chat { display: grid; gap: 16px; margin-top: 50px; }
+    .bubble { max-width: 90%; padding: 16px 20px; border-radius: 20px; font-size: 20px; line-height: 1.3; }
+    .bubble.user { justify-self: end; background: #0f5132; color: white; border-bottom-right-radius: 5px; }
+    .bubble.ai { background: rgba(255,255,255,.82); border-bottom-left-radius: 5px; }
+    .chips { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 34px; }
+    .chip { padding: 10px 13px; border: 1px solid rgba(15,81,50,.25); border-radius: 999px; background: rgba(255,255,255,.42); font-size: 16px; }
+    .intro { position: absolute; inset: auto; left: 150px; top: 130px; width: 1650px; height: 820px; }
+    .intro .subline { max-width: 680px; margin-top: 28px; }
+    .assistant-scene { position: absolute; inset: 0; padding: 120px 150px; }
+    .assistant-scene .panel { width: 1000px; padding: 42px; border: 1px solid #dbe4dc; border-radius: 30px; background: #fff; box-shadow: 0 18px 50px rgba(15,81,50,.12); }
+    .assistant-scene .panel h2 { margin: 20px 0 12px; font-size: 62px; letter-spacing: -.06em; }
+    .assistant-scene .panel p { color: #526159; font-size: 24px; }
+    .field { display: flex; align-items: center; gap: 15px; margin-top: 45px; padding: 21px 24px; border: 1px solid #dbe4dc; border-radius: 18px; color: #526159; font-size: 24px; }
+    .cursor { width: 3px; height: 28px; background: #0f5132; }
+    .response { width: 650px; margin: 24px 0 0 auto; padding: 21px 24px; border-radius: 18px 18px 4px 18px; background: #0f5132; color: #fff; font-size: 24px; }
+    .side-note { position: absolute; right: 160px; top: 300px; width: 450px; padding: 30px; border-left: 5px solid #8a5a00; color: #526159; font-size: 27px; line-height: 1.25; }
+    .features { position: absolute; inset: 0; padding: 120px 150px; }
+    .features h2 { margin: 18px 0 50px; font-size: 70px; letter-spacing: -.065em; }
+    .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; max-width: 1550px; }
+    .feature { min-height: 280px; padding: 30px; border: 1px solid #dbe4dc; border-radius: 24px; background: #fff; box-shadow: 0 18px 50px rgba(15,81,50,.08); }
+    .feature .icon { display: grid; place-items: center; width: 58px; height: 58px; margin-bottom: 30px; border-radius: 16px; background: #c8ebd6; color: #0f5132; font-size: 30px; }
+    .feature h3 { margin: 0 0 14px; font-size: 30px; letter-spacing: -.04em; }
+    .feature p { margin: 0; color: #526159; font-size: 20px; line-height: 1.3; }
+    .safety { position: absolute; inset: 0; padding: 160px 150px; }
+    .safety h2 { max-width: 1000px; margin: 22px 0; font-size: 78px; line-height: .98; letter-spacing: -.07em; }
+    .approval { position: absolute; right: 180px; top: 250px; width: 520px; padding: 28px; border: 1px solid #dbe4dc; border-radius: 24px; background: #fff; box-shadow: 0 18px 50px rgba(15,81,50,.12); }
+    .approval-top { display: flex; align-items: center; gap: 16px; color: #0f5132; font-size: 22px; font-weight: 750; }
+    .approval p { margin: 24px 0; color: #526159; font-size: 22px; }
+    .voice { display: flex; align-items: center; gap: 14px; padding: 15px 18px; border-radius: 14px; background: #e8f5eb; color: #0f5132; font-weight: 750; }
+    .closing { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+    .closing h2 { margin: 28px 0 12px; font-size: 92px; letter-spacing: -.075em; }
+    .url { color: #526159; font: 700 25px/1.2 ui-monospace, monospace; }
+    .clip { position: absolute; inset: 0; }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="main" data-start="0" data-duration="20" data-width="1920" data-height="1080">
+    <div class="bg"></div><div class="orb" data-layout-allow-overflow="true"></div><div class="orb-two" data-layout-allow-overflow="true"></div>
+    <section id="scene-owner-mode" class="intro clip" data-start="0" data-duration="3" data-track-index="0">
+      <div class="mark" id="intro-mark">☎</div>
+      <div class="eyebrow" id="intro-eyebrow">OPEN SOURCE · ANDROID</div>
+      <div class="headline" id="intro-headline" data-layout-allow-overlap="true" data-layout-allow-occlusion="true">Your phone.<br>Your assistant.</div>
+      <div class="subline" id="intro-subline" data-layout-allow-overlap="true" data-layout-allow-occlusion="true">Calls, SMS, memory, voice, and approvals—under your rules.</div>
+      <div class="phone" id="intro-phone"><div class="phone-notch"></div><div class="phone-label">OpenCell assistant</div><div class="phone-title">Good morning.</div><div class="chat"><div class="bubble user">Remember that I prefer short replies in Hinglish.</div><div class="bubble ai">I’ll remember that.</div></div><div class="chips"><div class="chip">Calls</div><div class="chip">Messages</div><div class="chip">Assistant</div></div></div>
+    </section>
+
+    <section id="scene-assistant" class="assistant-scene clip" data-start="3" data-duration="5" data-track-index="1">
+      <div class="panel" id="assistant-panel"><div class="eyebrow">PERSONAL ASSISTANT</div><h2 id="assistant-title">Memory that stays under your control.</h2><p>Tell the assistant what matters. Review or forget it any time.</p><div class="field" id="assistant-field"><span>⌕</span><span id="typed-text">Remind me to call the clinic in 15 minutes.</span><span class="cursor"></span></div><div class="response" id="assistant-response">I’ll remember that. You can review or forget it any time.</div></div>
+      <div class="side-note" id="assistant-note">Explicit memories are saved immediately. Inferred memories stay reviewable.</div>
+    </section>
+
+    <section id="scene-features" class="features clip" data-start="8" data-duration="5" data-track-index="2">
+      <div class="eyebrow">ONE APP · YOUR RULES</div><h2 id="features-title">Communication without the lock-in.</h2>
+      <div class="feature-grid"><article class="feature" id="feature-one"><div class="icon">☎</div><h3>One call list</h3><p>SIM calls and supported app-call notifications, together.</p></article><article class="feature" id="feature-two"><div class="icon">✉</div><h3>Phone-native SMS</h3><p>Threads, delivery state, notifications, and direct sending.</p></article><article class="feature" id="feature-three"><div class="icon">⌘</div><h3>Local gateway</h3><p>Pair a computer over Wi-Fi, USB, or Tailscale.</p></article></div>
+    </section>
+
+    <section id="scene-safety" class="safety clip" data-start="13" data-duration="4" data-track-index="3">
+      <div class="eyebrow">PERMISSION FIRST</div><h2 id="safety-title">External actions are previewed before they run.</h2>
+      <div class="approval" id="approval"><div class="approval-top"><span class="mark" style="width:52px;height:52px;border-radius:15px;font-size:28px;box-shadow:none">✓</span><span>Permission &amp; activity</span></div><p>Calls and messages pass through one policy with approvals, scopes, and an audit log.</p><div class="voice" id="voice">◉ &nbsp; Start voice conversation</div></div>
+    </section>
+
+    <section id="scene-closing" class="closing clip" data-start="17" data-duration="3" data-track-index="4"><div id="closing-content"><div class="mark" style="margin:auto">☎</div><h2>One app. Your rules.</h2><div class="url">udaysoni32.github.io/OpenCell/</div></div></section>
+    <audio id="music" data-start="0" data-duration="20" data-track-index="9" data-volume="0.24" src="assets/music/happy-beats-business-moves-vol-1-by-ende-dot-app.mp3"></audio>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    const fadeIn = (selector, at, vars = {}) => tl.fromTo(selector, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: .55, ease: "power2.out", ...vars }, at);
+    const fadeOut = (selector, at) => tl.to(selector, { opacity: 0, y: -18, duration: .4, ease: "power2.in" }, at);
+    fadeIn("#intro-mark", 0, { scale: .75, y: 0 });
+    fadeIn("#intro-eyebrow", .25, { y: 0 });
+    fadeIn("#intro-headline", .45, { y: 35 });
+    fadeIn("#intro-subline", .85, { y: 20 });
+    tl.fromTo("#intro-phone", { opacity: 0, x: 80, rotation: 3 }, { opacity: 1, x: 0, rotation: 0, duration: .8, ease: "power3.out" }, .35);
+    fadeOut(".intro", 2.65);
+    fadeIn("#assistant-panel", 3, { x: -35, y: 0 });
+    fadeIn("#assistant-note", 3.6, { x: 25, y: 0 });
+    tl.fromTo("#assistant-response", { opacity: 0, x: 35 }, { opacity: 1, x: 0, duration: .5, ease: "power2.out" }, 5.4);
+    fadeOut(".assistant-scene", 7.6);
+    fadeIn("#features-title", 8.05, { y: 20 });
+    tl.fromTo("#feature-one", { opacity: 0, y: 35 }, { opacity: 1, y: 0, duration: .5, ease: "power2.out" }, 8.55);
+    tl.fromTo("#feature-two", { opacity: 0, y: 35 }, { opacity: 1, y: 0, duration: .5, ease: "power2.out" }, 9.35);
+    tl.fromTo("#feature-three", { opacity: 0, y: 35 }, { opacity: 1, y: 0, duration: .5, ease: "power2.out" }, 10.15);
+    fadeOut(".features", 12.6);
+    fadeIn("#safety-title", 13.1, { x: -30, y: 0 });
+    fadeIn("#approval", 13.45, { x: 40, y: 0 });
+    fadeOut(".safety", 16.6);
+    fadeIn("#closing-content", 17, { scale: .94, y: 0 });
+    window.__timelines["main"] = tl;
+    tl.seek(0);
+  </script>
+</body>
+</html>
