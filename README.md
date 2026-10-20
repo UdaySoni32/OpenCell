@@ -20,6 +20,12 @@ Project website: [OpenCell on GitHub Pages](https://udaysoni32.github.io/OpenCel
 
 The app also walks you through setup the first time you open it.
 
+## Demo video
+
+A public demo-video link will be added after the video is uploaded to a public hosting
+service. The current launch video is intentionally kept outside the repository so this
+open-source source tree does not carry generated media binaries.
+
 Design: [`docs/superpowers/specs/2026-10-11-opencell-v2-design.md`](docs/superpowers/specs/2026-10-11-opencell-v2-design.md) ·
 Build plan: [`docs/superpowers/plans/2026-10-11-opencell-v2-implementation.md`](docs/superpowers/plans/2026-10-11-opencell-v2-implementation.md)
 
